@@ -18,8 +18,19 @@ FONT_PATH = "/Library/Fonts/Arial.ttf"  # Path to the font file
 FONT_SIZE = 20
 font = ImageFont.truetype(FONT_PATH, FONT_SIZE)
 
+# Function to create a simple placeholder avatar image
+def create_placeholder_avatar(output_path="images/placeholder_avatar.png"):
+    # Create a simple placeholder image (e.g., a blue circle on a white background)
+    img = Image.new("RGB", (40, 40), "white")
+    draw = ImageDraw.Draw(img)
+    draw.ellipse((5, 5, 35, 35), fill="blue", outline="black")
+    img.save(output_path)
+
+# Call this function to generate a placeholder avatar
+create_placeholder_avatar()
+
 # Function to generate synthetic Discord message images
-def generate_message_image(message, avatar_path="path_to_avatar.jpg", output_path="output_image.png"):
+def generate_message_image(message, avatar_path="images/placeholder_avatar.png", output_path=None):
     # Create a new blank image (adjust size as needed)
     img_width = 800
     img_height = 200
@@ -46,6 +57,6 @@ def generate_message_image(message, avatar_path="path_to_avatar.jpg", output_pat
 
 # Generate a synthetic image for each message in the loaded examples
 for idx, message in enumerate(MESSAGE_EXAMPLES):
-    output_image_path = f"generated_image_{idx + 1}.png"
+    output_image_path = f"images/generated/generated_image_{idx + 1}.png"
     generate_message_image(message, output_path=output_image_path)
     print(f"Generated image saved to {output_image_path}")
