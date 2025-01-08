@@ -61,7 +61,7 @@ def process_images(input_folder, output_folder):
             print(f"Processed and saved: {output_path}")
 
 # Example usage
-input_folder = "discord_chats"
+input_folder = "discord_chats/to_alter"
 output_folder = "discord_chats/altered"
 
 # Process all images in the input folder and save the altered versions
