@@ -1,44 +1,78 @@
 import os
-from PIL import Image
+from PIL import Image, ImageFilter, ImageEnhance
 import pytesseract # type: ignore
 import numpy as np
 import random
+from io import BytesIO
+import cv2  # type: ignore
+
+def subtle_distort(image_np, box, intensity=0.3):
+    x1, y1, x2, y2 = box
+    # Extend box slightly
+    margin = 3
+    x1, x2 = max(0, x1-margin), min(image_np.shape[1], x2+margin)
+    y1, y2 = max(0, y1-margin), min(image_np.shape[0], y2+margin)
+    
+    region = image_np[y1:y2, x1:x2].copy()
+    
+    # Random distortion type
+    distortion = random.choice([
+        'blur',
+        'noise',
+        'compression',
+        'color_shift'
+    ])
+    
+    if distortion == 'blur':
+        # Gaussian blur
+        region_img = Image.fromarray(region)
+        region = np.array(region_img.filter(ImageFilter.GaussianBlur(radius=0.5)))
+    
+    elif distortion == 'noise':
+        # Subtle noise
+        noise = np.random.normal(0, 2, region.shape)
+        region = np.clip(region + noise * intensity, 0, 255).astype(np.uint8)
+    
+    elif distortion == 'compression':
+        # JPEG compression artifacts
+        img = Image.fromarray(region)
+        buffer = BytesIO()
+        img.save(buffer, format='JPEG', quality=85)
+        buffer.seek(0)
+        region = np.array(Image.open(buffer))
+    
+    elif distortion == 'color_shift':
+        # Subtle color adjustment
+        shift = np.random.uniform(-5, 5, 3) * intensity
+        region = np.clip(region + shift, 0, 255).astype(np.uint8)
+    
+    # Blend distorted region with original
+    alpha = np.random.uniform(0.7, 0.9)
+    image_np[y1:y2, x1:x2] = cv2.addWeighted(
+        image_np[y1:y2, x1:x2], 1-alpha,
+        region, alpha, 0
+    )
+    
+    return image_np
 
 # Function to add reduced and tighter noise to the borders of a detected text region
 def add_noise_to_borders(image_path):
     # Open the image
     image = Image.open(image_path)
     image_np = np.array(image)
-    height, width, _ = image_np.shape  # Get image dimensions
     
-    # Use pytesseract to detect the text regions (bounding boxes)
+    # Get text boxes
     d = pytesseract.image_to_boxes(image)
     
-    # Iterate through each character's bounding box
+    # Process each text region
     for box in d.splitlines():
         b = box.split()
-        x1, y1, x2, y2 = int(b[1]), int(b[2]), int(b[3]), int(b[4])
+        box_coords = [int(b[1]), int(b[2]), int(b[3]), int(b[4])]
         
-        # Ensure coordinates are within image bounds
-        x1, x2 = max(0, x1), min(width, x2)
-        y1, y2 = max(0, y1), min(height, y2)
-        
-        # Tighten the noise area and reduce noise probability (90% reduction)
-        noise_margin = 2  # Reduced margin around text
-        noise_probability = 0.02  # Reduced noise probability
-        
-        # Add noise around the borders of each text box
-        for i in range(x1 - noise_margin, x2 + noise_margin):  # Reduced margin for tighter noise
-            for j in range(y1 - noise_margin, y2 + noise_margin):  # Reduced margin for tighter noise
-                # Ensure indices are within valid range
-                if 0 <= i < width and 0 <= j < height:
-                    if random.random() < noise_probability:  # Reduced probability of noise
-                        image_np[j, i] = [random.randint(0, 255) for _ in range(3)]
+        # Apply subtle distortion
+        image_np = subtle_distort(image_np, box_coords)
     
-    # Convert back to PIL image
-    noisy_image = Image.fromarray(image_np)
-    
-    return noisy_image
+    return Image.fromarray(image_np)
 
 # Function to process all images in a folder and save the altered images
 def process_images(input_folder, output_folder):

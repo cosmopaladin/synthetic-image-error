@@ -137,4 +137,4 @@ if __name__ == "__main__":
     message_examples = load_messages_from_file(MESSAGES_FILE)
 
     # Generate 5 synthetic chats, each with 10 messages
-    generate_multiple_chats(output_dir="discord_chats/gen/", num_chats=1000, num_messages_per_chat=10, message_examples=message_examples)
+    generate_multiple_chats(output_dir="discord_chats/gen/", num_chats=10000, num_messages_per_chat=10, message_examples=message_examples)

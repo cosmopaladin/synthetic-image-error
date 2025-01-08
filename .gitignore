@@ -1,5 +1,6 @@
 # Generated files
 *.png
+*.pth
 
 DS_Store
 *.DS_Store
