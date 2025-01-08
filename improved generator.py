@@ -38,6 +38,29 @@ def create_circular_avatar(avatar_path, size=AVATAR_SIZE):
     circular_avatar.paste(avatar, (0, 0), mask=mask)
     return circular_avatar
 
+
+def create_circular_avatar(avatar_path=None, size=AVATAR_SIZE):
+    """
+    Create a circular avatar with a random background color or load from a file.
+    If avatar_path is provided, it uses the image from the path. Otherwise, it generates a random-colored avatar.
+    """
+
+    # Generate a random-colored avatar
+    avatar = Image.new("RGBA", (size, size), color=(0, 0, 0, 0))
+    draw = ImageDraw.Draw(avatar)
+    random_color = tuple(random.randint(50, 200) for _ in range(3))  # Random RGB color
+    draw.ellipse((0, 0, size, size), fill=random_color)
+
+    # Create circular mask
+    mask = Image.new("L", (size, size), 0)
+    draw = ImageDraw.Draw(mask)
+    draw.ellipse((0, 0, size, size), fill=255)
+
+    # Apply mask to avatar
+    circular_avatar = Image.new("RGBA", (size, size))
+    circular_avatar.paste(avatar, (0, 0), mask=mask)
+    return circular_avatar
+
 # Generate a synthetic Discord chat
 def generate_discord_chat(messages, avatar_path, output_path):
     # Calculate image height dynamically based on the number of messages
