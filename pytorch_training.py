@@ -77,17 +77,23 @@ model = SimpleCNN()
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-# Training loop
+# Training loop with progress bar
 for epoch in range(10):
     model.train()
-    for images, labels in train_loader:
-        images, labels = images, labels
-        outputs = model(images)
-        loss = criterion(outputs, labels)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-    print(f"Epoch {epoch + 1}, Loss: {loss.item()}")
+    running_loss = 0.0
+    with tqdm(train_loader, desc=f'Epoch {epoch+1}/10') as pbar:
+        for images, labels in pbar:
+            images, labels = images, labels
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            
+            running_loss += loss.item()
+            pbar.set_postfix({'loss': f'{running_loss/len(train_loader):.4f}'})
+
+    print(f"Epoch {epoch + 1}, Loss: {running_loss/len(train_loader):.4f}")
 
 # Evaluate
 model.eval()
