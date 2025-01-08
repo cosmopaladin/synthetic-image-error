@@ -1,6 +1,20 @@
 import os
 import random
 import shutil
+from tqdm import tqdm # type: ignore
+
+def clean_directories():
+    # Paths to clean
+    paths = ["discord_chats/to_alter", "discord_chats/altered"]
+    
+    for path in paths:
+        if os.path.exists(path):
+            files = os.listdir(path)
+            for file in files:
+                file_path = os.path.join(path, file)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+            print(f"Cleaned {path}")
 
 def distribute_images():
     # Setup paths
@@ -21,7 +35,7 @@ def distribute_images():
     to_move = random.sample(image_files, num_to_move)
     
     # Move selected images
-    for filename in to_move:
+    for filename in tqdm(to_move, desc="Moving files"):
         src = os.path.join(gen_path, filename)
         dst = os.path.join(to_alter_path, filename)
         shutil.move(src, dst)
@@ -29,4 +43,7 @@ def distribute_images():
     print(f"Moved {len(to_move)} images to {to_alter_path}")
 
 if __name__ == "__main__":
+    print("Cleaning directories...")
+    clean_directories()
+    print("\nStarting image distribution...")
     distribute_images()
