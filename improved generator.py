@@ -5,8 +5,10 @@ import os
 # Paths to required assets
 FONT_PATH_BOLD = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"  # Update for your system
 FONT_PATH_REGULAR = "/System/Library/Fonts/Supplemental/Arial.ttf"    # Update for your system
-AVATAR_PATH = "images/placeholder_avatar.png"  # Path to a default avatar image
 MESSAGES_FILE = "message_examples.txt"  # Path to the file containing message examples
+
+# TO REMOVE. This is currently not used in the improved generator, but we may use it later.
+AVATAR_PATH = "images/placeholder_avatar.png"  # Path to a default avatar image
 
 # Chat appearance settings
 BACKGROUND_COLOR = (54, 57, 63)  # Discord background color
@@ -35,7 +37,7 @@ def create_circular_avatar(avatar_path, size=AVATAR_SIZE):
 
     # Apply mask to avatar
     circular_avatar = Image.new("RGBA", (size, size))
-    circular_avatar.paste(avatar, (0, 0), mask=mask)
+    circular_avatar.paste(avatar, (20, 20), mask=mask)
     return circular_avatar
 
 
@@ -49,16 +51,16 @@ def create_circular_avatar(avatar_path=None, size=AVATAR_SIZE):
     avatar = Image.new("RGBA", (size, size), color=(0, 0, 0, 0))
     draw = ImageDraw.Draw(avatar)
     random_color = tuple(random.randint(50, 200) for _ in range(3))  # Random RGB color
-    draw.ellipse((0, 0, size, size), fill=random_color)
+    draw.ellipse((0, 0, size-2, size-2), fill=random_color)
 
     # Create circular mask
-    mask = Image.new("L", (size, size), 0)
-    draw = ImageDraw.Draw(mask)
-    draw.ellipse((0, 0, size, size), fill=255)
+    # mask = Image.new("L", (size, size), 0)
+    # draw = ImageDraw.Draw(mask)
+    # draw.ellipse((0, 0, size, size), fill=255)
 
     # Apply mask to avatar
     circular_avatar = Image.new("RGBA", (size, size))
-    circular_avatar.paste(avatar, (0, 0), mask=mask)
+    circular_avatar.paste(avatar, (0, 0))
     return circular_avatar
 
 # Generate a synthetic Discord chat
