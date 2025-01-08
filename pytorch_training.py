@@ -129,3 +129,45 @@ print(f"Best validation accuracy: {max(history['val_accuracy']):.4f}")
 print(f"Final training loss: {history['train_loss'][-1]:.4f}")
 print(f"\nTraining loss by epoch: {[f'{loss:.4f}' for loss in history['train_loss']]}")
 print(f"Validation accuracy by epoch: {[f'{acc:.4f}' for acc in history['val_accuracy']]}")
+
+def save_model(model, path='model.pth'):
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'transform': transform
+    }, path)
+    print(f"Model saved to {path}")
+
+def load_model(path='model.pth'):
+    model = SimpleCNN()
+    checkpoint = torch.load(path)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model.eval()
+    return model, checkpoint['transform']
+
+def predict_image(image_path, model, transform):
+    # Load and preprocess image
+    image = Image.open(image_path).convert('RGB')
+    image = transform(image).unsqueeze(0)
+    
+    # Predict
+    with torch.no_grad():
+        outputs = model(image)
+        _, predicted = torch.max(outputs, 1)
+    
+    return "Altered" if predicted.item() == 1 else "Generated"
+
+# Add after training loop
+save_model(model)
+
+# # Example usage for prediction
+# if __name__ == "__main__":
+#     # Training code here
+#     ...existing code...
+    
+#     # Save model after training
+#     save_model(model)
+    
+#     # Example of loading and using model
+#     loaded_model, transform = load_model()
+#     result = predict_image("path_to_test_image.jpg", loaded_model, transform)
+#     print(f"Prediction: {result}")
