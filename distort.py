@@ -1,6 +1,6 @@
 import os
 from PIL import Image
-import pytesseract
+import pytesseract # type: ignore
 import numpy as np
 import random
 
