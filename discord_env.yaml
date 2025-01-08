@@ -68,6 +68,7 @@ dependencies:
       - optuna==4.1.0
       - packaging==24.2
       - pyparsing==3.2.1
+      - pytesseract==0.3.13
       - python-dateutil==2.9.0.post0
       - pyyaml==6.0.2
       - six==1.17.0
