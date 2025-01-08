@@ -1,12 +1,14 @@
 import os
 import torch
-from tqdm import tqdm
+from tqdm import tqdm # type: ignore
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset, DataLoader
 from torchvision.models import resnet18
 import torch.nn as nn
 import torch.optim as optim
 from PIL import Image
+import time
+from datetime import timedelta
 
 class DiscordDataset(Dataset):
     def __init__(self, gen_folder, altered_folder, transform=None):
@@ -77,7 +79,14 @@ model = SimpleCNN()
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-# Training loop with progress bar
+# Initialize metric tracking
+start_time = time.time()
+history = {
+    'train_loss': [],
+    'val_accuracy': []
+}
+
+# Training loop with progress bar and metrics
 for epoch in range(10):
     model.train()
     running_loss = 0.0
@@ -92,17 +101,31 @@ for epoch in range(10):
             
             running_loss += loss.item()
             pbar.set_postfix({'loss': f'{running_loss/len(train_loader):.4f}'})
+    
+    # Store training loss
+    epoch_loss = running_loss/len(train_loader)
+    history['train_loss'].append(epoch_loss)
+    
+    # Validation after each epoch
+    model.eval()
+    correct, total = 0, 0
+    with torch.no_grad():
+        for images, labels in val_loader:
+            outputs = model(images)
+            _, predicted = torch.max(outputs, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+    
+    val_acc = correct / total
+    history['val_accuracy'].append(val_acc)
+    print(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Val Acc: {val_acc:.4f}")
 
-    print(f"Epoch {epoch + 1}, Loss: {running_loss/len(train_loader):.4f}")
-
-# Evaluate
-model.eval()
-correct, total = 0, 0
-with torch.no_grad():
-    for images, labels in val_loader:
-        outputs = model(images)
-        _, predicted = torch.max(outputs, 1)
-        total += labels.size(0)
-        correct += (predicted == labels).sum().item()
-
-print("Validation Accuracy:", correct / total)
+# Final Report
+training_time = time.time() - start_time
+print("\n=== Training Complete ===")
+print(f"Total training time: {timedelta(seconds=int(training_time))}")
+print("\nFinal Metrics:")
+print(f"Best validation accuracy: {max(history['val_accuracy']):.4f}")
+print(f"Final training loss: {history['train_loss'][-1]:.4f}")
+print(f"\nTraining loss by epoch: {[f'{loss:.4f}' for loss in history['train_loss']]}")
+print(f"Validation accuracy by epoch: {[f'{acc:.4f}' for acc in history['val_accuracy']]}")
