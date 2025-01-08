@@ -1,10 +1,10 @@
 import os
-import cv2
+import cv2 # type: ignore
 import numpy as np
-from tqdm import tqdm
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
+from tqdm import tqdm # type: ignore
+from sklearn.model_selection import train_test_split # type: ignore
+from sklearn.ensemble import RandomForestClassifier # type: ignore
+from sklearn.metrics import accuracy_score # type: ignore
 
 def load_images(gen_folder, altered_folder):
     images, labels = [], []
