@@ -4,6 +4,7 @@ import pytesseract # type: ignore
 import numpy as np
 import random
 from io import BytesIO
+import cv2  # type: ignore
 
 def subtle_distort(image_np, box, intensity=0.3):
     x1, y1, x2, y2 = box
