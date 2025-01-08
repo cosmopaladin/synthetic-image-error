@@ -7,6 +7,9 @@ FONT_PATH_BOLD = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"  # Update f
 FONT_PATH_REGULAR = "/System/Library/Fonts/Supplemental/Arial.ttf"    # Update for your system
 MESSAGES_FILE = "message_examples.txt"  # Path to the file containing message examples
 
+# Path to the folder containing avatar images
+avatars_folder = "images/avatars"
+
 # TO REMOVE. This is currently not used in the improved generator, but we may use it later.
 AVATAR_PATH = "images/placeholder_avatar.png"  # Path to a default avatar image
 
@@ -27,41 +30,30 @@ font_regular = ImageFont.truetype(FONT_PATH_REGULAR, FONT_SIZE - 2)
 
 # Helper function to create circular avatars
 def create_circular_avatar(avatar_path, size=AVATAR_SIZE):
-    avatar = Image.open(avatar_path).convert("RGBA")
-    avatar = avatar.resize((size, size), Image.Resampling.LANCZOS)
+  # Get a list of all files in the folder
+  avatar_files = [f for f in os.listdir(avatars_folder) if os.path.isfile(os.path.join(avatars_folder, f))]
+  
+  # Ensure the folder isn't empty
+  if not avatar_files:
+      raise FileNotFoundError(f"No files found in {avatars_folder}.")
+  # Choose a random file
+  random_avatar = random.choice(avatar_files)
 
-    # Create circular mask
-    mask = Image.new("L", (size, size), 0)
-    draw = ImageDraw.Draw(mask)
-    draw.ellipse((0, 0, size, size), fill=255)
+  # Full path to the selected file
+  random_avatar_path = os.path.join(avatars_folder, random_avatar)
+  
+  avatar = Image.open(random_avatar_path).convert("RGBA")
+  avatar = avatar.resize((size, size), Image.Resampling.LANCZOS)
 
-    # Apply mask to avatar
-    circular_avatar = Image.new("RGBA", (size, size))
-    circular_avatar.paste(avatar, (20, 20), mask=mask)
-    return circular_avatar
+  # Create circular mask
+  mask = Image.new("L", (size, size), 0)
+  draw = ImageDraw.Draw(mask)
+  draw.ellipse((0, 0, size-4, size-4), fill=255)
 
-
-def create_circular_avatar(avatar_path=None, size=AVATAR_SIZE):
-    """
-    Create a circular avatar with a random background color or load from a file.
-    If avatar_path is provided, it uses the image from the path. Otherwise, it generates a random-colored avatar.
-    """
-
-    # Generate a random-colored avatar
-    avatar = Image.new("RGBA", (size, size), color=(0, 0, 0, 0))
-    draw = ImageDraw.Draw(avatar)
-    random_color = tuple(random.randint(50, 200) for _ in range(3))  # Random RGB color
-    draw.ellipse((0, 0, size-2, size-2), fill=random_color)
-
-    # Create circular mask
-    # mask = Image.new("L", (size, size), 0)
-    # draw = ImageDraw.Draw(mask)
-    # draw.ellipse((0, 0, size, size), fill=255)
-
-    # Apply mask to avatar
-    circular_avatar = Image.new("RGBA", (size, size))
-    circular_avatar.paste(avatar, (0, 0))
-    return circular_avatar
+  # Apply mask to avatar
+  circular_avatar = Image.new("RGBA", (size, size))
+  circular_avatar.paste(avatar, (0, 0), mask=mask)
+  return circular_avatar
 
 # Generate a synthetic Discord chat
 def generate_discord_chat(messages, avatar_path, output_path):
