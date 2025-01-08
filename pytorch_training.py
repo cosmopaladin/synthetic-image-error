@@ -3,12 +3,22 @@ import torch
 from tqdm import tqdm # type: ignore
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset, DataLoader
-from torchvision.models import resnet18, ResNet18_Weights
+from torchvision.models import resnet34, ResNet34_Weights
 import torch.nn as nn
 import torch.optim as optim
 from PIL import Image
 import time
 from datetime import timedelta
+import torch.nn.init as init
+
+# Training parameters
+num_epochs = 50
+batch_s = 64
+
+# Early stopping
+best_acc = 0.0
+patience = 5
+patience_counter = 0
 
 class DiscordDataset(Dataset):
     def __init__(self, gen_folder, altered_folder, transform=None):
@@ -35,22 +45,13 @@ class DiscordDataset(Dataset):
             image = self.transform(image)
         return image, label
 
-# Enhanced data augmentation
+# Enhanced transforms
 transform_train = transforms.Compose([
     transforms.Resize((224, 224)),
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomRotation(10),
-    transforms.ColorJitter(brightness=0.2, contrast=0.2),
+    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+    transforms.RandomAffine(degrees=5, translate=(0.1, 0.1)),
     transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                        std=[0.229, 0.224, 0.225])
-])
-
-transform_val = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                        std=[0.229, 0.224, 0.225])
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
 # Create dataset from discord_chats folders
@@ -61,32 +62,45 @@ train_size = int(0.8 * len(dataset))
 val_size = len(dataset) - train_size
 train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
 
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=32)
+train_loader = DataLoader(train_dataset, batch_size=batch_s, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=batch_s)
 
 class ImprovedModel(nn.Module):
     def __init__(self):
         super(ImprovedModel, self).__init__()
-        self.resnet = resnet18(weights=ResNet18_Weights.DEFAULT)
+        self.resnet = resnet34(weights=ResNet34_Weights.DEFAULT)
         self.resnet.fc = nn.Sequential(
             nn.Dropout(0.5),
-            nn.Linear(512, 2)
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(256, 2)
         )
+        self._initialize_weights()
+    
+    def _initialize_weights(self):
+        for m in self.resnet.fc.modules():
+            if isinstance(m, nn.Linear):
+                init.kaiming_normal_(m.weight)
+                init.constant_(m.bias, 0)
     
     def forward(self, x):
         return self.resnet(x)
 
-# Training parameters
 model = ImprovedModel()
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=3)
-num_epochs = 50
+criterion = nn.CrossEntropyLoss(weight=torch.FloatTensor([1.0, 1.0]))
+optimizer = optim.AdamW(model.parameters(), lr=0.0001, weight_decay=0.01)
+scheduler = optim.lr_scheduler.OneCycleLR(
+    optimizer,
+    max_lr=0.001,
+    epochs=num_epochs,
+    steps_per_epoch=len(train_loader),
+    pct_start=0.2
+)
 
-# Early stopping
-best_acc = 0.0
-patience = 5
-patience_counter = 0
+# Gradient clipping
+max_grad_norm = 1.0
+torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
 
 # Initialize metric tracking
 start_time = time.time()
