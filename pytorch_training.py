@@ -10,6 +10,17 @@ from PIL import Image
 import time
 from datetime import timedelta
 import torch.nn.init as init
+from torch.utils.tensorboard import SummaryWriter
+
+# Device configuration
+device = (
+    "mps" 
+    if torch.backends.mps.is_available() 
+    else "cuda" 
+    if torch.cuda.is_available() 
+    else "cpu"
+)
+print(f"Using device: {device}")
 
 class DiscordDataset(Dataset):
     def __init__(self, gen_folder, altered_folder, transform=None):
@@ -58,8 +69,6 @@ class ImprovedModel(nn.Module):
     def forward(self, x):
         return self.resnet(x)
 
-
-
 def save_model(model, path='model.pth'):
     torch.save({
         'model_state_dict': model.state_dict(),
@@ -77,7 +86,7 @@ def load_model(path='model.pth'):
 def predict_image(image_path, model, transform):
     # Load and preprocess image
     image = Image.open(image_path).convert('RGB')
-    image = transform(image).unsqueeze(0)
+    image = transform(image).unsqueeze(0).to(device)
     
     # Predict
     with torch.no_grad():
@@ -86,16 +95,90 @@ def predict_image(image_path, model, transform):
     
     return "Altered" if predicted.item() == 1 else "Generated"
 
-# Train model
-if __name__ == "__main__":
-    # Training parameters
-    num_epochs = 50
-    batch_s = 64
+def create_data_loaders(gen_folder, altered_folder, batch_size=64, train_split=0.8):
+    # Data augmentation for training
+    transform_train = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(15),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    
+    # Simple transforms for validation
+    transform_val = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    
+    # Create datasets with different transforms
+    full_dataset = DiscordDataset(gen_folder, altered_folder, transform=transform_train)
+    
+    # Calculate split sizes
+    train_size = int(train_split * len(full_dataset))
+    val_size = len(full_dataset) - train_size
+    
+    # Split dataset
+    train_dataset, val_dataset = torch.utils.data.random_split(
+        full_dataset, 
+        [train_size, val_size]
+    )
+    
+    # Override validation set transform
+    val_dataset.dataset.transform = transform_val
+    
+    # Create data loaders
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=2,
+        pin_memory=True if device != "cpu" else False
+    )
+    
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=2,
+        pin_memory=True if device != "cpu" else False
+    )
+    
+    return train_loader, val_loader
 
-    # Early stopping
+# Usage in main
+if __name__ == "__main__":
+    # Get data loaders
+    train_loader, val_loader = create_data_loaders(
+        gen_folder="discord_chats/gen",
+        altered_folder="discord_chats/altered",
+        batch_size=64
+    )
+    
+    # Initialize model and move to device
+    model = ImprovedModel().to(device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.AdamW(model.parameters(), lr=0.001)
+    
+    # Training loop
+    num_epochs = 50
     best_acc = 0.0
     patience = 5
     patience_counter = 0
+
+    for epoch in range(num_epochs):
+        model.train()
+        for inputs, labels in tqdm(train_loader):
+            inputs = inputs.to(device)
+            labels = labels.to(device)
+            
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
 
     # Enhanced transforms with more aggressive augmentation
     transform_train = transforms.Compose([
@@ -133,22 +216,8 @@ if __name__ == "__main__":
     val_size = len(dataset) - train_size
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_s, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_s)
-
-    # Device setup
-    device = (
-        "mps" 
-        if torch.backends.mps.is_available()
-        else "cuda" 
-        if torch.cuda.is_available() 
-        else "cpu"
-    )
-    print(f"Using device: {device}")
-
     # Model setup
-    model = ImprovedModel()
-    model = model.to(device)
+    model = ImprovedModel().to(device)
 
     # Loss and optimizer
     criterion = nn.CrossEntropyLoss()
@@ -165,7 +234,14 @@ if __name__ == "__main__":
         'train_loss': [],
         'val_accuracy': []
     }
-
+    
+    # Initialize tensorboard writer
+    writer = SummaryWriter('runs/training_' + time.strftime("%Y%m%d-%H%M%S"))
+    
+    # Log model graph
+    dummy_input = torch.randn(1, 3, 224, 224)
+    writer.add_graph(model, dummy_input)
+    
     # Training loop with progress bar and metrics
     for epoch in range(num_epochs):
         model.train()
@@ -212,6 +288,14 @@ if __name__ == "__main__":
                 break
 
         print(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Val Acc: {acc:.4f}")
+
+        # Log metrics to tensorboard
+        writer.add_scalar('Loss/train', epoch_loss, epoch)
+        writer.add_scalar('Accuracy/validation', acc, epoch)
+        writer.add_scalar('Learning_rate', optimizer.param_groups[0]['lr'], epoch)
+
+    # Close tensorboard writer
+    writer.close()
 
     # Final Report
     training_time = time.time() - start_time
