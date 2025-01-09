@@ -2,6 +2,7 @@
 *.png
 *.pth
 *.zip
+*.out.tfevents.*
 
 DS_Store
 *.DS_Store
