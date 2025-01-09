@@ -13,6 +13,7 @@ import torch.nn.init as init
 from torch.utils.tensorboard import SummaryWriter
 
 # Device configuration
+# I do not understand why, but this needs to be at the top of the file
 device = (
     "mps" 
     if torch.backends.mps.is_available() 
@@ -58,42 +59,9 @@ class ImprovedModel(nn.Module):
             nn.Dropout(0.3),
             nn.Linear(256, 2)
         )
-    #     self._initialize_weights()
-    
-    # def _initialize_weights(self):
-    #     for m in self.resnet.fc.modules():
-    #         if isinstance(m, nn.Linear):
-    #             init.kaiming_normal_(m.weight)
-    #             init.constant_(m.bias, 0)
     
     def forward(self, x):
         return self.resnet(x)
-
-def save_model(model, path='model.pth'):
-    torch.save({
-        'model_state_dict': model.state_dict(),
-        'transform': transform_train
-    }, path)
-    print(f"Model saved to {path}")
-
-def load_model(path='model.pth'):
-    model = ImprovedModel()
-    checkpoint = torch.load(path)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    model.eval()
-    return model, checkpoint['transform']
-
-def predict_image(image_path, model, transform):
-    # Load and preprocess image
-    image = Image.open(image_path).convert('RGB')
-    image = transform(image).unsqueeze(0).to(device)
-    
-    # Predict
-    with torch.no_grad():
-        outputs = model(image)
-        _, predicted = torch.max(outputs, 1)
-    
-    return "Altered" if predicted.item() == 1 else "Generated"
 
 def create_data_loaders(gen_folder, altered_folder, batch_size=64, train_split=0.8):
     # Data augmentation for training
@@ -113,29 +81,20 @@ def create_data_loaders(gen_folder, altered_folder, batch_size=64, train_split=0
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     
-    # Create datasets with different transforms
-    full_dataset = DiscordDataset(gen_folder, altered_folder, transform=transform_train)
+    # Create datasets with respective transforms
+    train_dataset = DiscordDataset(gen_folder, altered_folder, transform=transform_train)
+    val_dataset = DiscordDataset(gen_folder, altered_folder, transform=transform_val)
     
-    # Calculate split sizes
-    train_size = int(train_split * len(full_dataset))
-    val_size = len(full_dataset) - train_size
-    
-    # Split dataset
-    train_dataset, val_dataset = torch.utils.data.random_split(
-        full_dataset, 
-        [train_size, val_size]
-    )
-    
-    # Override validation set transform
-    val_dataset.dataset.transform = transform_val
-    
+    # Determine pin_memory based on device
+    pin_memory = True if device != "cpu" else False
+
     # Create data loaders
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
         num_workers=2,
-        pin_memory=True if device != "cpu" else False
+        pin_memory=pin_memory
     )
     
     val_loader = DataLoader(
@@ -143,173 +102,142 @@ def create_data_loaders(gen_folder, altered_folder, batch_size=64, train_split=0
         batch_size=batch_size,
         shuffle=False,
         num_workers=2,
-        pin_memory=True if device != "cpu" else False
+        pin_memory=pin_memory
     )
     
     return train_loader, val_loader
 
+def train_model(model, train_loader, val_loader, num_epochs=50):
+    writer = SummaryWriter(f'runs/training_{time.strftime("%Y%m%d-%H%M%S")}')
+    
+    # Log model architecture
+    dummy_input = torch.randn(1, 3, 224, 224).to(device)
+    writer.add_graph(model, dummy_input)
+    
+    best_acc = 0.0
+    for epoch in range(num_epochs):
+        # Training phase
+        model.train()
+        running_loss = 0.0
+        
+        for inputs, labels in tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}'):
+            inputs, labels = inputs.to(device), labels.to(device)
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+        
+        avg_train_loss = running_loss / len(train_loader)
+        
+        # Validation phase
+        model.eval()
+        val_loss = 0.0
+        correct = 0
+        total = 0
+        
+        with torch.no_grad():
+            for inputs, labels in val_loader:
+                inputs, labels = inputs.to(device), labels.to(device)
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+                val_loss += loss.item()
+                _, predicted = outputs.max(1)
+                total += labels.size(0)
+                correct += predicted.eq(labels).sum().item()
+        
+        val_accuracy = correct / total
+        avg_val_loss = val_loss / len(val_loader)
+        
+        # Log metrics
+        writer.add_scalar('Loss/train', avg_train_loss, epoch)
+        writer.add_scalar('Loss/validation', avg_val_loss, epoch)
+        writer.add_scalar('Accuracy/validation', val_accuracy, epoch)
+    
+    return avg_train_loss, avg_val_loss, val_accuracy
+
+def print_training_report(training_time, best_val_acc, best_epoch, history):
+    print("\n" + "="*50)
+    print("Training Complete!")
+    print("="*50)
+    print(f"Total training time: {timedelta(seconds=int(training_time))}")
+    print(f"Best validation accuracy: {best_val_acc:.4f} (epoch {best_epoch})")
+    print(f"Final training loss: {history['train_loss'][-1]:.4f}")
+    print(f"Final validation loss: {history['val_loss'][-1]:.4f}")
+    print("\nTraining History:")
+    print(f"Starting training loss: {history['train_loss'][0]:.4f}")
+    print(f"Starting validation loss: {history['val_loss'][0]:.4f}")
+    print(f"Starting validation accuracy: {history['val_acc'][0]:.4f}")
+    print("="*50)
+
 # Usage in main
 if __name__ == "__main__":
-    # Get data loaders
+    # Initialize tracking variables
+    start_time = time.time()
+    best_val_acc = 0.0
+    best_epoch = 0
+    history = {
+        'train_loss': [],
+        'val_loss': [],
+        'val_acc': []
+    }
+    
+    # Get data loaders and setup model
     train_loader, val_loader = create_data_loaders(
         gen_folder="discord_chats/gen",
         altered_folder="discord_chats/altered",
         batch_size=64
     )
     
-    # Initialize model and move to device
     model = ImprovedModel().to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=0.001)
     
-    # Training loop
-    num_epochs = 50
-    best_acc = 0.0
-    patience = 5
-    patience_counter = 0
-
-    for epoch in range(num_epochs):
-        model.train()
-        for inputs, labels in tqdm(train_loader):
-            inputs = inputs.to(device)
-            labels = labels.to(device)
-            
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-
-    # Enhanced transforms with more aggressive augmentation
-    transform_train = transforms.Compose([
-        transforms.Resize((256, 256)),  # Larger initial size for random crops
-        transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomVerticalFlip(p=0.3),
-        transforms.RandomRotation(15),
-        transforms.ColorJitter(
-            brightness=0.3,
-            contrast=0.3,
-            saturation=0.3,
-            hue=0.1
-        ),
-        transforms.RandomAffine(
-            degrees=15,
-            translate=(0.15, 0.15),
-            scale=(0.8, 1.2),
-            shear=10
-        ),
-        transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
-        transforms.RandomPerspective(distortion_scale=0.2, p=0.5),
-        transforms.ToTensor(),
-        transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
-        )
-    ])
-
-    # Create dataset from discord_chats folders
-    dataset = DiscordDataset("discord_chats/gen", "discord_chats/altered", transform=transform_train)
-
-    # Split into train/validation sets
-    train_size = int(0.8 * len(dataset))
-    val_size = len(dataset) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
-
-    # Model setup
-    model = ImprovedModel().to(device)
-
-    # Loss and optimizer
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=0.001) # learning rate. If too small it can get stuck in a local min. If too big it will never reach the minimum. Hyper parameter
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', patience=3)
-
-    # Gradient clipping
-    max_grad_norm = 1.0
-    torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-
-    # Initialize metric tracking
-    start_time = time.time()
-    history = {
-        'train_loss': [],
-        'val_accuracy': []
-    }
+    # Train the model
+    avg_train_loss, avg_val_loss, val_accuracy = train_model(model, train_loader, val_loader, num_epochs=50)
     
-    # Initialize tensorboard writer
-    writer = SummaryWriter('runs/training_' + time.strftime("%Y%m%d-%H%M%S"))
+    # Store metrics
+    history['train_loss'].append(avg_train_loss)
+    history['val_loss'].append(avg_val_loss)
+    history['val_acc'].append(val_accuracy)
     
-    # Log model graph
-    dummy_input = torch.randn(1, 3, 224, 224)
-    writer.add_graph(model, dummy_input)
+    if val_accuracy > best_val_acc:
+        best_val_acc = val_accuracy
+        best_epoch = epoch + 1
     
-    # Training loop with progress bar and metrics
-    for epoch in range(num_epochs):
-        model.train()
-        running_loss = 0.0
-        with tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}') as pbar:
-            for inputs, labels in pbar:
-                inputs, labels = inputs.to(device), labels.to(device)
-                optimizer.zero_grad()
-                outputs = model(inputs)
-                loss = criterion(outputs, labels)
-                loss.backward()
-                optimizer.step()
-                running_loss += loss.item()
-                pbar.set_postfix({'loss': f'{running_loss/len(train_loader):.4f}'})
-        
-        # Store training loss
-        epoch_loss = running_loss/len(train_loader)
-        history['train_loss'].append(epoch_loss)
-        
-        # Validation after each epoch
-        model.eval()
-        correct, total = 0, 0
-        with torch.no_grad():
-            for inputs, labels in val_loader:
-                inputs, labels = inputs.to(device), labels.to(device)
-                outputs = model(inputs)
-                _, predicted = torch.max(outputs, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
-        
-        acc = correct / total
-        history['val_accuracy'].append(acc)
-        scheduler.step(acc)
-        
-        # Early stopping check
-        if acc > best_acc:
-            best_acc = acc
-            patience_counter = 0
-            torch.save(model.state_dict(), 'best_model.pth')
-        else:
-            patience_counter += 1
-            if patience_counter >= patience:
-                print(f'Early stopping at epoch {epoch}')
-                break
-
-        print(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Val Acc: {acc:.4f}")
-
-        # Log metrics to tensorboard
-        writer.add_scalar('Loss/train', epoch_loss, epoch)
-        writer.add_scalar('Accuracy/validation', acc, epoch)
-        writer.add_scalar('Learning_rate', optimizer.param_groups[0]['lr'], epoch)
-
-    # Close tensorboard writer
+    # Calculate training time
+    training_time = time.time() - start_time
+    
+    # Final Report
+    print_training_report(training_time, best_val_acc, best_epoch, history)
+    
     writer.close()
 
-    # Final Report
-    training_time = time.time() - start_time
-    print("\n=== Training Complete ===")
-    print(f"Total training time: {timedelta(seconds=int(training_time))}")
-    print("\nFinal Metrics:")
-    print(f"Best validation accuracy: {max(history['val_accuracy']):.4f}")
-    print(f"Final training loss: {history['train_loss'][-1]:.4f}")
-    print(f"\nTraining loss by epoch: {[f'{loss:.4f}' for loss in history['train_loss']]}")
-    print(f"Validation accuracy by epoch: {[f'{acc:.4f}' for acc in history['val_accuracy']]}")
-    # Save model after training
-    save_model(model)
+
+
+# def save_model(model, path='model.pth'):
+#     torch.save({
+#         'model_state_dict': model.state_dict(),
+#         'transform': transform_train
+#     }, path)
+#     print(f"Model saved to {path}")
+
+# def load_model(path='model.pth'):
+#     model = ImprovedModel()
+#     checkpoint = torch.load(path)
+#     model.load_state_dict(checkpoint['model_state_dict'])
+#     model.eval()
+#     return model, checkpoint['transform']
+
+# def predict_image(image_path, model, transform):
+#     # Load and preprocess image
+#     image = Image.open(image_path).convert('RGB')
+#     image = transform(image).unsqueeze(0).to(device)
     
-    # Example of loading and using model
-    loaded_model, transform = load_model()
-    result = predict_image("path_to_test_image.jpg", loaded_model, transform)
-    print(f"Prediction: {result}")
+#     # Predict
+#     with torch.no_grad():
+#         outputs = model(image)
+#         _, predicted = torch.max(outputs, 1)
+    
+#     return "Altered" if predicted.item() == 1 else "Generated"
