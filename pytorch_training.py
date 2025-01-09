@@ -48,9 +48,9 @@ class DiscordDataset(Dataset):
             image = self.transform(image)
         return image, label
 
-class ImprovedModel(nn.Module):
+class pre_trained_resnet18(nn.Module):
     def __init__(self):
-        super(ImprovedModel, self).__init__()
+        super(pre_trained_resnet18, self).__init__()
         self.resnet = resnet18(weights=ResNet18_Weights.DEFAULT)
         self.resnet.fc = nn.Sequential(
             nn.Dropout(0.5),
@@ -107,55 +107,82 @@ def create_data_loaders(gen_folder, altered_folder, batch_size=64, train_split=0
     
     return train_loader, val_loader
 
-def train_model(model, train_loader, val_loader, num_epochs=50):
-    writer = SummaryWriter(f'runs/training_{time.strftime("%Y%m%d-%H%M%S")}')
-    
-    # Log model architecture
-    dummy_input = torch.randn(1, 3, 224, 224).to(device)
-    writer.add_graph(model, dummy_input)
-    
-    best_acc = 0.0
-    for epoch in range(num_epochs):
-        # Training phase
-        model.train()
-        running_loss = 0.0
+def train_model(model, train_loader, val_loader, num_epochs=50, patience=5):
+    try:
+        writer = SummaryWriter(f'runs/training_{time.strftime("%Y%m%d-%H%M%S")}')
         
-        for inputs, labels in tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}'):
-            inputs, labels = inputs.to(device), labels.to(device)
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
+        # Log model architecture
+        dummy_input = torch.randn(1, 3, 224, 224).to(device)
+        writer.add_graph(model, dummy_input)
         
-        avg_train_loss = running_loss / len(train_loader)
+        best_acc = 0.0
+        patience_counter = 0
         
-        # Validation phase
-        model.eval()
-        val_loss = 0.0
-        correct = 0
-        total = 0
-        
-        with torch.no_grad():
-            for inputs, labels in val_loader:
+        for epoch in range(num_epochs):
+            # Training phase
+            model.train()
+            running_loss = 0.0
+            val_loss_display = 0.0
+            val_acc_display = 0.0
+            
+            pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}')
+            for inputs, labels in pbar:
                 inputs, labels = inputs.to(device), labels.to(device)
+                optimizer.zero_grad()
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
-                val_loss += loss.item()
-                _, predicted = outputs.max(1)
-                total += labels.size(0)
-                correct += predicted.eq(labels).sum().item()
+                loss.backward()
+                optimizer.step()
+                running_loss += loss.item()
+                # Update progress bar with all metrics
+                pbar.set_postfix({
+                    'train_loss': f'{loss.item():.4f}',
+                    'val_loss': f'{val_loss_display:.4f}',
+                    'val_acc': f'{val_acc_display:.4f}'
+                })
+            
+            avg_train_loss = running_loss / len(train_loader)
+            
+            # Validation phase
+            val_loss = 0.0
+            correct = 0
+            total = 0
+
+            model.eval()
+            with torch.no_grad():
+                for inputs, labels in val_loader:
+                    inputs, labels = inputs.to(device), labels.to(device)
+                    outputs = model(inputs)
+                    loss = criterion(outputs, labels)
+                    val_loss += loss.item()
+                    _, predicted = outputs.max(1)
+                    total += labels.size(0)
+                    correct += predicted.eq(labels).sum().item()
+            
+            val_accuracy = correct / total
+            avg_val_loss = val_loss / len(val_loader)
+            # Store values for next epoch's display
+            val_loss_display = avg_val_loss
+            val_acc_display = val_accuracy
+            
+            # Early stopping check
+            if val_accuracy > best_acc:
+                best_acc = val_accuracy
+                patience_counter = 0
+            else:
+                patience_counter += 1
+            if patience_counter >= patience:
+                print(f"\nEarly stopping triggered after epoch {epoch+1}")
+                break
+            
+            # Log metrics
+            writer.add_scalar('Loss/train', avg_train_loss, epoch)
+            writer.add_scalar('Loss/validation', avg_val_loss, epoch)
+            writer.add_scalar('Accuracy/validation', val_accuracy, epoch)
         
-        val_accuracy = correct / total
-        avg_val_loss = val_loss / len(val_loader)
-        
-        # Log metrics
-        writer.add_scalar('Loss/train', avg_train_loss, epoch)
-        writer.add_scalar('Loss/validation', avg_val_loss, epoch)
-        writer.add_scalar('Accuracy/validation', val_accuracy, epoch)
-    
-    return avg_train_loss, avg_val_loss, val_accuracy
+        return avg_train_loss, avg_val_loss, val_accuracy
+    finally:
+        writer.close()
 
 def print_training_report(training_time, best_val_acc, best_epoch, history):
     print("\n" + "="*50)
@@ -190,12 +217,12 @@ if __name__ == "__main__":
         batch_size=64
     )
     
-    model = ImprovedModel().to(device)
+    model = pre_trained_resnet18().to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=0.001)
     
     # Train the model
-    avg_train_loss, avg_val_loss, val_accuracy = train_model(model, train_loader, val_loader, num_epochs=50)
+    avg_train_loss, avg_val_loss, val_accuracy = train_model(model, train_loader, val_loader, num_epochs=10, patience=3)
     
     # Store metrics
     history['train_loss'].append(avg_train_loss)
@@ -211,9 +238,6 @@ if __name__ == "__main__":
     
     # Final Report
     print_training_report(training_time, best_val_acc, best_epoch, history)
-    
-    writer.close()
-
 
 
 # def save_model(model, path='model.pth'):
@@ -224,7 +248,7 @@ if __name__ == "__main__":
 #     print(f"Model saved to {path}")
 
 # def load_model(path='model.pth'):
-#     model = ImprovedModel()
+#     model = pre_trained_resnet18()
 #     checkpoint = torch.load(path)
 #     model.load_state_dict(checkpoint['model_state_dict'])
 #     model.eval()
