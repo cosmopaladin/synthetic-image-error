@@ -47,13 +47,13 @@ class ImprovedModel(nn.Module):
             nn.Dropout(0.3),
             nn.Linear(256, 2)
         )
-        self._initialize_weights()
+    #     self._initialize_weights()
     
-    def _initialize_weights(self):
-        for m in self.resnet.fc.modules():
-            if isinstance(m, nn.Linear):
-                init.kaiming_normal_(m.weight)
-                init.constant_(m.bias, 0)
+    # def _initialize_weights(self):
+    #     for m in self.resnet.fc.modules():
+    #         if isinstance(m, nn.Linear):
+    #             init.kaiming_normal_(m.weight)
+    #             init.constant_(m.bias, 0)
     
     def forward(self, x):
         return self.resnet(x)
@@ -136,16 +136,24 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_dataset, batch_size=batch_s, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_s)
 
-    model = ImprovedModel()
-    criterion = nn.CrossEntropyLoss(weight=torch.FloatTensor([1.0, 1.0]))
-    optimizer = optim.AdamW(model.parameters(), lr=0.0001, weight_decay=0.01)
-    scheduler = optim.lr_scheduler.OneCycleLR(
-        optimizer,
-        max_lr=0.001, # learning rate. If too small it can get stuck in a local min. If too big it will never reach the minimum. Hyper parameter
-        epochs=num_epochs,
-        steps_per_epoch=len(train_loader),
-        pct_start=0.2
+    # Device setup
+    device = (
+        "mps" 
+        if torch.backends.mps.is_available()
+        else "cuda" 
+        if torch.cuda.is_available() 
+        else "cpu"
     )
+    print(f"Using device: {device}")
+
+    # Model setup
+    model = ImprovedModel()
+    model = model.to(device)
+
+    # Loss and optimizer
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.AdamW(model.parameters(), lr=0.001) # learning rate. If too small it can get stuck in a local min. If too big it will never reach the minimum. Hyper parameter
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', patience=3)
 
     # Gradient clipping
     max_grad_norm = 1.0
@@ -164,6 +172,7 @@ if __name__ == "__main__":
         running_loss = 0.0
         with tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}') as pbar:
             for inputs, labels in pbar:
+                inputs, labels = inputs.to(device), labels.to(device)
                 optimizer.zero_grad()
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
@@ -181,6 +190,7 @@ if __name__ == "__main__":
         correct, total = 0, 0
         with torch.no_grad():
             for inputs, labels in val_loader:
+                inputs, labels = inputs.to(device), labels.to(device)
                 outputs = model(inputs)
                 _, predicted = torch.max(outputs, 1)
                 total += labels.size(0)
