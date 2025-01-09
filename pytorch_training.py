@@ -3,7 +3,7 @@ import torch
 from tqdm import tqdm # type: ignore
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset, DataLoader
-from torchvision.models import resnet34, ResNet34_Weights
+from torchvision.models import resnet18, ResNet18_Weights
 import torch.nn as nn
 import torch.optim as optim
 from PIL import Image
@@ -39,7 +39,7 @@ class DiscordDataset(Dataset):
 class ImprovedModel(nn.Module):
     def __init__(self):
         super(ImprovedModel, self).__init__()
-        self.resnet = resnet34(weights=ResNet34_Weights.DEFAULT)
+        self.resnet = resnet18(weights=ResNet18_Weights.DEFAULT)
         self.resnet.fc = nn.Sequential(
             nn.Dropout(0.5),
             nn.Linear(512, 256),
