@@ -11,6 +11,7 @@ import time
 from datetime import timedelta
 import torch.nn.init as init
 from torch.utils.tensorboard import SummaryWriter
+from sklearn.model_selection import train_test_split
 
 # Device configuration
 # I do not understand why, but this needs to be at the top of the file
@@ -24,19 +25,23 @@ device = (
 print(f"Using device: {device}")
 
 class DiscordDataset(Dataset):
-    def __init__(self, gen_folder, altered_folder, transform=None):
+    def __init__(self, gen_folder, altered_folder, transform=None, file_list=None):
         self.transform = transform
         self.data = []
         
-        # Load generated images (label 0)
-        files = [f for f in os.listdir(gen_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-        for filename in tqdm(files, desc="Loading generated images"):
-            self.data.append((os.path.join(gen_folder, filename), 0))
-            
-        # Load altered images (label 1)
-        files = [f for f in os.listdir(altered_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-        for filename in tqdm(files, desc="Loading altered images"):
-            self.data.append((os.path.join(altered_folder, filename), 1))
+        if file_list:
+            self.data = [(os.path.join(gen_folder if label == 0 else altered_folder, f), label) for f, label in file_list]
+        else:
+            print("You've done goofed")
+            # # Load generated images (label 0)
+            # files = [f for f in os.listdir(gen_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+            # for filename in tqdm(files, desc="Loading generated images"):
+            #     self.data.append((os.path.join(gen_folder, filename), 0))
+                
+            # # Load altered images (label 1)
+            # files = [f for f in os.listdir(altered_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+            # for filename in tqdm(files, desc="Loading altered images"):
+            #     self.data.append((os.path.join(altered_folder, filename), 1))
 
     def __len__(self):
         return len(self.data)
@@ -63,6 +68,25 @@ class pre_trained_resnet18(nn.Module):
     def forward(self, x):
         return self.resnet(x)
 
+def create_split_datasets(gen_folder, altered_folder, transform_train, transform_val, train_ratio=0.8):
+    # Get all file paths
+    gen_files = [(f, 0) for f in os.listdir(gen_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    alt_files = [(f, 1) for f in os.listdir(altered_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    
+    # Split each category separately to maintain balance
+    gen_train, gen_val = train_test_split(gen_files, train_size=train_ratio)
+    alt_train, alt_val = train_test_split(alt_files, train_size=train_ratio)
+    
+    # Create datasets with proper splits
+    train_dataset = DiscordDataset(gen_folder, altered_folder, 
+                                 file_list=gen_train + alt_train,
+                                 transform=transform_train)
+    val_dataset = DiscordDataset(gen_folder, altered_folder, 
+                                file_list=gen_val + alt_val,
+                                transform=transform_val)
+    
+    return train_dataset, val_dataset
+
 def create_data_loaders(gen_folder, altered_folder, batch_size=64, train_split=0.8):
     # Data augmentation for training
     transform_train = transforms.Compose([
@@ -82,8 +106,7 @@ def create_data_loaders(gen_folder, altered_folder, batch_size=64, train_split=0
     ])
     
     # Create datasets with respective transforms
-    train_dataset = DiscordDataset(gen_folder, altered_folder, transform=transform_train)
-    val_dataset = DiscordDataset(gen_folder, altered_folder, transform=transform_val)
+    train_dataset, val_dataset = create_split_datasets(gen_folder, altered_folder, transform_train, transform_val, train_ratio=train_split)
     
     # Determine pin_memory based on device
     pin_memory = True if device != "cpu" else False
