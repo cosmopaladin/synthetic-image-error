@@ -187,11 +187,27 @@ def train_model(model, train_loader, val_loader, num_epochs=50, patience=5):
         if val_accuracy > best_acc:
             best_acc = val_accuracy
             patience_counter = 0
-            torch.save(model.state_dict(), 'best_model.pth')
+            timestamp = time.strftime('%Y%m%d_%H%M%S')
+            save_checkpoint(
+                model,
+                epoch,
+                val_accuracy,
+                optimizer,
+                f'model_checkpoint_acc{val_accuracy:.4f}_{timestamp}.pth'
+            )
         else:
             patience_counter += 1
             if patience_counter >= patience:
                 print(f'\nEarly stopping triggered after {epoch + 1} epochs')
+                print(f'Best validation accuracy: {best_acc:.4f}')
+                timestamp = time.strftime('%Y%m%d_%H%M%S')
+                save_checkpoint(
+                    model,
+                    epoch,
+                    val_accuracy,
+                    optimizer,
+                    f'model_checkpoint_acc{val_accuracy:.4f}_{timestamp}.pth'
+                )
                 break
     
     return history
@@ -209,6 +225,16 @@ def print_training_report(training_time, best_val_acc, best_epoch, history):
     print(f"Starting validation loss: {history['val_loss'][0]:.4f}")
     print(f"Starting validation accuracy: {history['val_acc'][0]:.4f}")
     print("="*50)
+
+def save_checkpoint(model, epoch, val_accuracy, optimizer, filename):
+    checkpoint = {
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'val_accuracy': val_accuracy,
+    }
+    torch.save(checkpoint, filename)
+    print(f"Checkpoint saved to {filename}")
 
 # Usage in main
 if __name__ == "__main__":
