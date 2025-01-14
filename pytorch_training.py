@@ -316,10 +316,11 @@ def log_run_info(mode, model_info, runtime=None, history=None, prediction_result
         
         if mode == 'train':
             f.write(f"Training Duration: {timedelta(seconds=int(runtime))}\n")
-            f.write(f"Final Epoch: {final_epoch}\n")  # Add final epoch
+            f.write(f"Final Epoch: {final_epoch}\n")
             f.write(f"Final Training Loss: {history['train_loss'][-1]:.4f}\n")
             f.write(f"Final Validation Loss: {history['val_loss'][-1]:.4f}\n")
             f.write(f"Best Validation Accuracy: {max(history['val_acc']):.4f}\n")
+            f.write(f"Feature Reduction Size: {FEATURE_REDUCTION}\n")  # Add feature reduction size
             f.write(f"Learning Rate: {optimizer.param_groups[0]['lr']}\n")
             f.write(f"LR Patience: {LR_PATIENCE}\n")
             f.write(f"LR Factor: {LR_FACTOR}\n")
