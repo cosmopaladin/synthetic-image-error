@@ -1,17 +1,16 @@
 import os
 import torch
 from tqdm import tqdm # type: ignore
-import torchvision.transforms as transforms
-from torch.utils.data import Dataset, DataLoader
-from torchvision.models import resnet18, ResNet18_Weights
-import torch.nn as nn
-import torch.optim as optim
-from PIL import Image
+import torchvision.transforms as transforms # type: ignore
+from torch.utils.data import Dataset, DataLoader # type: ignore
+from torchvision.models import resnet18, ResNet18_Weights # type: ignore
+import torch.nn as nn # type: ignore
+import torch.optim as optim # type: ignore
+from PIL import Image # type: ignore
 import time
 from datetime import timedelta
-import torch.nn.init as init
-from torch.utils.tensorboard import SummaryWriter
-from sklearn.model_selection import train_test_split
+import torch.nn.init as init # type: ignore
+from sklearn.model_selection import train_test_split # type: ignore
 
 # Device configuration
 # I do not understand why, but this needs to be at the top of the file
@@ -131,81 +130,71 @@ def create_data_loaders(gen_folder, altered_folder, batch_size=64, train_split=0
     return train_loader, val_loader
 
 def train_model(model, train_loader, val_loader, num_epochs=50, patience=5):
-    try:
-        writer = SummaryWriter(f'runs/training_{time.strftime("%Y%m%d-%H%M%S")}')
+    best_acc = 0.0
+    patience_counter = 0
+    history = {'train_loss': [], 'val_loss': [], 'val_acc': []}
+    
+    for epoch in range(num_epochs):
+        # Training phase
+        model.train()
+        running_loss = 0.0
         
-        # Log model architecture
-        dummy_input = torch.randn(1, 3, 224, 224).to(device)
-        writer.add_graph(model, dummy_input)
-        
-        best_acc = 0.0
-        patience_counter = 0
-        
-        for epoch in range(num_epochs):
-            # Training phase
-            model.train()
-            running_loss = 0.0
-            val_loss_display = 0.0
-            val_acc_display = 0.0
+        pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}')
+        for inputs, labels in pbar:
+            inputs, labels = inputs.to(device), labels.to(device)
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
             
-            pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}')
-            for inputs, labels in pbar:
+            pbar.set_postfix({
+                'train_loss': f'{loss.item():.4f}'
+            })
+        
+        avg_train_loss = running_loss / len(train_loader)
+        history['train_loss'].append(avg_train_loss)
+        
+        # Validation phase
+        model.eval()
+        val_loss = 0.0
+        correct = 0
+        total = 0
+        
+        with torch.no_grad():
+            for inputs, labels in val_loader:
                 inputs, labels = inputs.to(device), labels.to(device)
-                optimizer.zero_grad()
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
-                loss.backward()
-                optimizer.step()
-                running_loss += loss.item()
-                # Update progress bar with all metrics
-                pbar.set_postfix({
-                    'train_loss': f'{loss.item():.4f}',
-                    'val_loss': f'{val_loss_display:.4f}',
-                    'val_acc': f'{val_acc_display:.4f}'
-                })
-            
-            avg_train_loss = running_loss / len(train_loader)
-            
-            # Validation phase
-            val_loss = 0.0
-            correct = 0
-            total = 0
-
-            model.eval()
-            with torch.no_grad():
-                for inputs, labels in val_loader:
-                    inputs, labels = inputs.to(device), labels.to(device)
-                    outputs = model(inputs)
-                    loss = criterion(outputs, labels)
-                    val_loss += loss.item()
-                    _, predicted = outputs.max(1)
-                    total += labels.size(0)
-                    correct += predicted.eq(labels).sum().item()
-            
-            val_accuracy = correct / total
-            avg_val_loss = val_loss / len(val_loader)
-            # Store values for next epoch's display
-            val_loss_display = avg_val_loss
-            val_acc_display = val_accuracy
-            
-            # Early stopping check
-            if val_accuracy > best_acc:
-                best_acc = val_accuracy
-                patience_counter = 0
-            else:
-                patience_counter += 1
-            if patience_counter >= patience:
-                print(f"\nEarly stopping triggered after epoch {epoch+1}")
-                break
-            
-            # Log metrics
-            writer.add_scalar('Loss/train', avg_train_loss, epoch)
-            writer.add_scalar('Loss/validation', avg_val_loss, epoch)
-            writer.add_scalar('Accuracy/validation', val_accuracy, epoch)
+                val_loss += loss.item()
+                _, predicted = outputs.max(1)
+                total += labels.size(0)
+                correct += predicted.eq(labels).sum().item()
         
-        return avg_train_loss, avg_val_loss, val_accuracy
-    finally:
-        writer.close()
+        val_accuracy = correct / total
+        avg_val_loss = val_loss / len(val_loader)
+        
+        history['val_loss'].append(avg_val_loss)
+        history['val_acc'].append(val_accuracy)
+        
+        print(f'\nEpoch: {epoch+1}')
+        print(f'Training Loss: {avg_train_loss:.4f}')
+        print(f'Validation Loss: {avg_val_loss:.4f}')
+        print(f'Validation Accuracy: {val_accuracy:.4f}')
+        
+        # Early stopping check
+        if val_accuracy > best_acc:
+            best_acc = val_accuracy
+            patience_counter = 0
+            torch.save(model.state_dict(), 'best_model.pth')
+        else:
+            patience_counter += 1
+            if patience_counter >= patience:
+                print(f'\nEarly stopping triggered after {epoch + 1} epochs')
+                break
+    
+    return history
 
 def print_training_report(training_time, best_val_acc, best_epoch, history):
     print("\n" + "="*50)
@@ -240,10 +229,12 @@ if __name__ == "__main__":
         batch_size=64
     )
     
+    # Training parameters
     model = pre_trained_resnet18().to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=0.001)
-    
+    optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=3)
+
     # Train the model
     avg_train_loss, avg_val_loss, val_accuracy = train_model(model, train_loader, val_loader, num_epochs=10, patience=3)
     
