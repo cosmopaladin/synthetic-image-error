@@ -13,6 +13,13 @@ import torch.nn.init as init # type: ignore
 from sklearn.model_selection import train_test_split # type: ignore
 import argparse
 
+# Hyperparameters
+LEARNING_RATE = 0.001
+BATCH_SIZE = 64
+EARLY_STOPPING_PATIENCE = 3
+WEIGHT_DECAY = 0.01
+NUM_EPOCHS = 10
+
 # Device configuration
 # I do not understand why, but this needs to be at the top of the file
 device = (
@@ -258,6 +265,33 @@ def predict_image(model, image_path):
     
     return altered_prob
 
+def log_run_info(mode, model_info, runtime=None, history=None, prediction_result=None):
+    """Log run information to a report file"""
+    log_file = "training_report.txt"
+    timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+    
+    with open(log_file, 'a') as f:
+        f.write(f"\n{'='*50}\n")
+        f.write(f"Run Date: {timestamp}\n")
+        f.write(f"Mode: {mode}\n")
+        f.write(f"Device: {device}\n")
+        
+        if mode == 'train':
+            f.write(f"Training Duration: {timedelta(seconds=int(runtime))}\n")
+            f.write(f"Final Training Loss: {history['train_loss'][-1]:.4f}\n")
+            f.write(f"Final Validation Loss: {history['val_loss'][-1]:.4f}\n")
+            f.write(f"Best Validation Accuracy: {max(history['val_acc']):.4f}\n")
+            f.write(f"Learning Rate: {optimizer.param_groups[0]['lr']}\n")
+            f.write(f"Batch Size: 64\n")
+            f.write(f"Early Stopping Patience: 3\n")
+            
+        elif mode == 'predict':
+            f.write(f"Model Path: {model_info}\n")
+            f.write(f"Image: {args.image}\n")
+            f.write(f"Alteration Probability: {prediction_result:.2%}\n")
+        
+        f.write(f"{'='*50}\n")
+
 # Usage in main
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train or use a model for altered image detection')
@@ -278,6 +312,7 @@ if __name__ == "__main__":
         prob = predict_image(model, args.image)
         print(f"\nPrediction for {args.image}:")
         print(f"Probability of being altered: {prob:.2%}")
+        log_run_info('predict', args.model, prediction_result=prob)
         
     else:  # train mode
         # Initialize tracking variables
@@ -301,19 +336,33 @@ if __name__ == "__main__":
         train_loader, val_loader = create_data_loaders(
             gen_folder="discord_chats/gen",
             altered_folder="discord_chats/altered",
-            batch_size=64
+            batch_size=BATCH_SIZE
         )
         
         # Training parameters
         criterion = nn.CrossEntropyLoss()
-        optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', 
-                                                       factor=0.1, patience=3)
+        optimizer = optim.AdamW(model.parameters(), 
+                              lr=LEARNING_RATE, 
+                              weight_decay=WEIGHT_DECAY)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, 
+            mode='max', 
+            factor=0.1, 
+            patience=EARLY_STOPPING_PATIENCE
+        )
         
         # Train the model
-        history = train_model(model, train_loader, val_loader, 
-                            num_epochs=10, patience=3)
+        history = train_model(
+            model, 
+            train_loader, 
+            val_loader, 
+            num_epochs=NUM_EPOCHS, 
+            patience=EARLY_STOPPING_PATIENCE
+        )
         
         # Calculate training time and print report
         training_time = time.time() - start_time
         print_training_report(training_time, best_val_acc, best_epoch, history)
+        
+        # Log run information
+        log_run_info('train', None, training_time, history)
