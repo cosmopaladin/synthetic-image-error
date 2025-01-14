@@ -87,7 +87,41 @@ def create_split_datasets(gen_folder, altered_folder, transform_train, transform
     
     return train_dataset, val_dataset
 
+def calculate_normalization_values(gen_folder, altered_folder):
+    """Calculate mean and std values from training dataset"""
+    print("Calculating dataset statistics...")
+    
+    # Get all image paths
+    gen_files = [os.path.join(gen_folder, f) for f in os.listdir(gen_folder) 
+                if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    alt_files = [os.path.join(altered_folder, f) for f in os.listdir(altered_folder) 
+                if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    all_files = gen_files + alt_files
+    
+    # Initialize variables
+    mean = torch.zeros(3)
+    std = torch.zeros(3)
+    
+    # First pass: mean
+    for img_path in tqdm(all_files, desc="Calculating mean"):
+        img = transforms.ToTensor()(Image.open(img_path).convert('RGB'))
+        mean += img.mean([1, 2])
+    mean /= len(all_files)
+    
+    # Second pass: std
+    for img_path in tqdm(all_files, desc="Calculating std"):
+        img = transforms.ToTensor()(Image.open(img_path).convert('RGB'))
+        std += ((img - mean[:, None, None]) ** 2).mean([1, 2])
+    std = torch.sqrt(std / len(all_files))
+    
+    return mean.tolist(), std.tolist()
+
 def create_data_loaders(gen_folder, altered_folder, batch_size=64, train_split=0.8):
+    # Calculate normalization values
+    mean, std = calculate_normalization_values(gen_folder, altered_folder)
+    print(f"Dataset mean: {mean}")
+    print(f"Dataset std: {std}")
+    
     # Data augmentation for training
     transform_train = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -95,14 +129,14 @@ def create_data_loaders(gen_folder, altered_folder, batch_size=64, train_split=0
         transforms.RandomRotation(15),
         transforms.ColorJitter(brightness=0.2, contrast=0.2),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        transforms.Normalize(mean=mean, std=std)
     ])
     
     # Simple transforms for validation
     transform_val = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        transforms.Normalize(mean=mean, std=std)
     ])
     
     # Create datasets with respective transforms
