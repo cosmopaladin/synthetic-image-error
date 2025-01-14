@@ -16,11 +16,11 @@ import argparse
 # Hyperparameters
 LEARNING_RATE = 0.01
 BATCH_SIZE = 64
-EARLY_STOPPING_PATIENCE = 10
+EARLY_STOPPING_PATIENCE = 11
 WEIGHT_DECAY = 0.01
-NUM_EPOCHS = 30
+NUM_EPOCHS = 33
 LR_PATIENCE = 5
-LR_FACTOR = 0.1
+LR_FACTOR = 0.1 #LEARNING_RATE * LR_FACTOR = new learning rate
 
 # Device configuration
 # I do not understand why, but this needs to be at the top of the file
