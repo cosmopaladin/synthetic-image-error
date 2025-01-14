@@ -3,7 +3,7 @@ import torch # type: ignore
 from tqdm import tqdm # type: ignore
 import torchvision.transforms as transforms # type: ignore
 from torch.utils.data import Dataset, DataLoader # type: ignore
-from torchvision.models import resnet18, ResNet18_Weights # type: ignore
+from torchvision.models import resnet50, ResNet50_Weights # type: ignore
 import torch.nn as nn # type: ignore
 import torch.optim as optim # type: ignore
 from PIL import Image # type: ignore
@@ -53,16 +53,16 @@ class DiscordDataset(Dataset):
             image = self.transform(image)
         return image, label
 
-class pre_trained_resnet18(nn.Module):
+class pre_trained_resnet50(nn.Module):
     def __init__(self):
-        super(pre_trained_resnet18, self).__init__()
-        self.resnet = resnet18(weights=ResNet18_Weights.DEFAULT)
+        super(pre_trained_resnet50, self).__init__()
+        self.resnet = resnet50(weights=ResNet50_Weights.DEFAULT)
         self.resnet.fc = nn.Sequential(
             nn.Dropout(0.5),
-            nn.Linear(512, 256),
+            nn.Linear(2048, 512),  # ResNet50 has 2048 features
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(256, 2)
+            nn.Linear(512, 2)
         )
     
     def forward(self, x):
@@ -244,7 +244,7 @@ def load_checkpoint(checkpoint_path):
         raise FileNotFoundError(f"No checkpoint found at {checkpoint_path}")
         
     checkpoint = torch.load(checkpoint_path, map_location='cpu')
-    model = pre_trained_resnet18()
+    model = pre_trained_resnet50()  # Use ResNet50
     model.load_state_dict(checkpoint['model_state_dict'])
     model = model.to(device)
     return model, checkpoint
@@ -268,7 +268,7 @@ def predict_image(model, image_path):
     
     return altered_prob
 
-def log_run_info(mode, model_info, runtime=None, history=None, prediction_result=None):
+def log_run_info(mode, model_info, runtime=None, history=None, prediction_result=None, final_epoch=None):
     """Log run information to a report file"""
     log_file = "training_report.txt"
     timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
@@ -281,6 +281,7 @@ def log_run_info(mode, model_info, runtime=None, history=None, prediction_result
         
         if mode == 'train':
             f.write(f"Training Duration: {timedelta(seconds=int(runtime))}\n")
+            f.write(f"Final Epoch: {final_epoch}\n")  # Add final epoch
             f.write(f"Final Training Loss: {history['train_loss'][-1]:.4f}\n")
             f.write(f"Final Validation Loss: {history['val_loss'][-1]:.4f}\n")
             f.write(f"Best Validation Accuracy: {max(history['val_acc']):.4f}\n")
@@ -335,7 +336,7 @@ if __name__ == "__main__":
             model, checkpoint = load_checkpoint(args.model)
             print(f"Continuing training from checkpoint: {args.model}")
         else:  # Train new model
-            model = pre_trained_resnet18().to(device)
+            model = pre_trained_resnet50().to(device)  # Use ResNet50
             
         # Get data loaders
         train_loader, val_loader = create_data_loaders(
@@ -367,7 +368,8 @@ if __name__ == "__main__":
         
         # Calculate training time and print report
         training_time = time.time() - start_time
+        final_epoch = len(history['train_loss'])  # Get final epoch number
         print_training_report(training_time, best_val_acc, best_epoch, history)
         
-        # Log run information
-        log_run_info('train', None, training_time, history)
+        # Log run information with final epoch
+        log_run_info('train', None, training_time, history, final_epoch=final_epoch)
