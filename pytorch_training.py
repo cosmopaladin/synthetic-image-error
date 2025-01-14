@@ -14,11 +14,13 @@ from sklearn.model_selection import train_test_split # type: ignore
 import argparse
 
 # Hyperparameters
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.01
 BATCH_SIZE = 64
-EARLY_STOPPING_PATIENCE = 3
+EARLY_STOPPING_PATIENCE = 10
 WEIGHT_DECAY = 0.01
-NUM_EPOCHS = 10
+NUM_EPOCHS = 30
+LR_PATIENCE = 5
+LR_FACTOR = 0.1  
 
 # Device configuration
 # I do not understand why, but this needs to be at the top of the file
@@ -282,8 +284,10 @@ def log_run_info(mode, model_info, runtime=None, history=None, prediction_result
             f.write(f"Final Validation Loss: {history['val_loss'][-1]:.4f}\n")
             f.write(f"Best Validation Accuracy: {max(history['val_acc']):.4f}\n")
             f.write(f"Learning Rate: {optimizer.param_groups[0]['lr']}\n")
-            f.write(f"Batch Size: 64\n")
-            f.write(f"Early Stopping Patience: 3\n")
+            f.write(f"LR Patience: {LR_PATIENCE}\n")
+            f.write(f"LR Factor: {LR_FACTOR}\n")
+            f.write(f"Batch Size: {BATCH_SIZE}\n")
+            f.write(f"Early Stopping Patience: {EARLY_STOPPING_PATIENCE}\n")
             
         elif mode == 'predict':
             f.write(f"Model Path: {model_info}\n")
@@ -347,8 +351,8 @@ if __name__ == "__main__":
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, 
             mode='max', 
-            factor=0.1, 
-            patience=EARLY_STOPPING_PATIENCE
+            factor=LR_FACTOR, 
+            patience=LR_PATIENCE
         )
         
         # Train the model
