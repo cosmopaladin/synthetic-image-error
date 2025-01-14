@@ -14,11 +14,11 @@ from sklearn.model_selection import train_test_split # type: ignore
 import argparse
 
 # Hyperparameters
-LEARNING_RATE = 0.05
+LEARNING_RATE = 0.001
 FEATURE_REDUCTION = 512 # ResNet50 has 2048 features
 BATCH_SIZE = 64
 EARLY_STOPPING_PATIENCE = 13
-WEIGHT_DECAY = 0.005
+WEIGHT_DECAY = 0.0001
 NUM_EPOCHS = 40
 LR_PATIENCE = 3
 LR_FACTOR = 0.5 #LEARNING_RATE * LR_FACTOR = new learning rate
