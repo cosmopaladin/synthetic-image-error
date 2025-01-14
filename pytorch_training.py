@@ -179,7 +179,7 @@ def train_model(model, train_loader, val_loader, num_epochs=50, patience=5):
         pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}')
         for inputs, labels in pbar:
             inputs, labels = inputs.to(device), labels.to(device)
-            labels = labels.float()  # Convert to float for BCE
+            labels = labels.float().unsqueeze(1)  # Add dimension to match output
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
@@ -203,6 +203,7 @@ def train_model(model, train_loader, val_loader, num_epochs=50, patience=5):
         with torch.no_grad():
             for inputs, labels in val_loader:
                 inputs, labels = inputs.to(device), labels.to(device)
+                labels = labels.float().unsqueeze(1)  # Add dimension
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
                 val_loss += loss.item()
