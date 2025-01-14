@@ -1,9 +1,13 @@
 # Generated files
 *.png
 *.pth
+*.zip
+*.out.tfevents.*
 
-DS_Store
+# System files
 *.DS_Store
+*.code-workspace
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
