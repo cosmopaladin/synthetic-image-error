@@ -20,7 +20,7 @@ EARLY_STOPPING_PATIENCE = 10
 WEIGHT_DECAY = 0.01
 NUM_EPOCHS = 30
 LR_PATIENCE = 5
-LR_FACTOR = 0.1  
+LR_FACTOR = 0.1
 
 # Device configuration
 # I do not understand why, but this needs to be at the top of the file
@@ -185,6 +185,7 @@ def train_model(model, train_loader, val_loader, num_epochs=50, patience=5):
         print(f'Validation Accuracy: {val_accuracy:.4f}')
         
         # Early stopping check
+        # NOTE this will not save every checkpoint, but only ones which are improving or the inal checkpoint before an early stop
         if val_accuracy > best_acc:
             best_acc = val_accuracy
             patience_counter = 0
