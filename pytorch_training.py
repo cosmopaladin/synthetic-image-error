@@ -54,16 +54,17 @@ class DiscordDataset(Dataset):
             image = self.transform(image)
         return image, label
 
+# Update model's final layer for single output
 class pre_trained_resnet50(nn.Module):
     def __init__(self):
         super(pre_trained_resnet50, self).__init__()
         self.resnet = resnet50(weights=ResNet50_Weights.DEFAULT)
         self.resnet.fc = nn.Sequential(
             nn.Dropout(0.5),
-            nn.Linear(2048, FEATURE_REDUCTION),  # ResNet50 has 2048 features
+            nn.Linear(2048, FEATURE_REDUCTION),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(FEATURE_REDUCTION, 2)
+            nn.Linear(FEATURE_REDUCTION, 1)  # Changed to 1 output for BCE
         )
     
     def forward(self, x):
@@ -178,6 +179,7 @@ def train_model(model, train_loader, val_loader, num_epochs=50, patience=5):
         pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}')
         for inputs, labels in pbar:
             inputs, labels = inputs.to(device), labels.to(device)
+            labels = labels.float()  # Convert to float for BCE
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
@@ -204,7 +206,7 @@ def train_model(model, train_loader, val_loader, num_epochs=50, patience=5):
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
                 val_loss += loss.item()
-                _, predicted = outputs.max(1)
+                predicted = torch.round(torch.sigmoid(outputs))  # Use sigmoid and round for binary classification
                 total += labels.size(0)
                 correct += predicted.eq(labels).sum().item()
         
@@ -284,6 +286,7 @@ def load_checkpoint(checkpoint_path):
     model = model.to(device)
     return model, checkpoint
 
+# Update prediction handling
 def predict_image(model, image_path):
     """Predict if an image has been altered"""
     transform = transforms.Compose([
@@ -298,8 +301,8 @@ def predict_image(model, image_path):
     
     with torch.no_grad():
         outputs = model(image)
-        probabilities = torch.softmax(outputs, dim=1)
-        altered_prob = probabilities[0][1].item()
+        probabilities = torch.sigmoid(outputs)  # Use sigmoid instead of softmax
+        altered_prob = probabilities[0].item()
     
     return altered_prob
 
@@ -382,7 +385,7 @@ if __name__ == "__main__":
         )
         
         # Training parameters
-        criterion = nn.CrossEntropyLoss()
+        criterion = nn.BCEWithLogitsLoss()
         optimizer = optim.AdamW(model.parameters(), 
                               lr=LEARNING_RATE, 
                               weight_decay=WEIGHT_DECAY)
