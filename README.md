@@ -6,8 +6,11 @@ Synthetic-image-error (Pronounced, Sigh). Named for the feeling you will have ev
 This project generate synthetic discord message screenshots. Creates artificial errors in them. With the intention to train a model that can evaluate if a discord message has been artificially altered.
 
 ## Command line
-### For prediction:
-python pytorch_training.py --model checkpoint.pth --mode predict --image path/to/image.jpg
+### Train new model (default)
+python pytorch_training.py
 
-### For continued training:
+### Train from checkpoint
 python pytorch_training.py --model checkpoint.pth --mode train
+
+### Predict single image
+python pytorch_training.py --model checkpoint.pth --mode predict --image test.jpg

@@ -1,5 +1,5 @@
 import os
-import torch
+import torch # type: ignore
 from tqdm import tqdm # type: ignore
 import torchvision.transforms as transforms # type: ignore
 from torch.utils.data import Dataset, DataLoader # type: ignore
@@ -11,6 +11,7 @@ import time
 from datetime import timedelta
 import torch.nn.init as init # type: ignore
 from sklearn.model_selection import train_test_split # type: ignore
+import argparse
 
 # Device configuration
 # I do not understand why, but this needs to be at the top of the file
@@ -32,15 +33,6 @@ class DiscordDataset(Dataset):
             self.data = [(os.path.join(gen_folder if label == 0 else altered_folder, f), label) for f, label in file_list]
         else:
             print("You've done goofed")
-            # # Load generated images (label 0)
-            # files = [f for f in os.listdir(gen_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-            # for filename in tqdm(files, desc="Loading generated images"):
-            #     self.data.append((os.path.join(gen_folder, filename), 0))
-                
-            # # Load altered images (label 1)
-            # files = [f for f in os.listdir(altered_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-            # for filename in tqdm(files, desc="Loading altered images"):
-            #     self.data.append((os.path.join(altered_folder, filename), 1))
 
     def __len__(self):
         return len(self.data)
@@ -236,72 +228,92 @@ def save_checkpoint(model, epoch, val_accuracy, optimizer, filename):
     torch.save(checkpoint, filename)
     print(f"Checkpoint saved to {filename}")
 
+def load_checkpoint(checkpoint_path):
+    """Load a saved model checkpoint"""
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(f"No checkpoint found at {checkpoint_path}")
+        
+    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    model = pre_trained_resnet18()
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model = model.to(device)
+    return model, checkpoint
+
+def predict_image(model, image_path):
+    """Predict if an image has been altered"""
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    
+    model.eval()
+    image = Image.open(image_path).convert('RGB')
+    image = transform(image).unsqueeze(0).to(device)
+    
+    with torch.no_grad():
+        outputs = model(image)
+        probabilities = torch.softmax(outputs, dim=1)
+        altered_prob = probabilities[0][1].item()
+    
+    return altered_prob
+
 # Usage in main
 if __name__ == "__main__":
-    # Initialize tracking variables
-    start_time = time.time()
-    best_val_acc = 0.0
-    best_epoch = 0
-    history = {
-        'train_loss': [],
-        'val_loss': [],
-        'val_acc': []
-    }
+    parser = argparse.ArgumentParser(description='Train or use a model for altered image detection')
+    parser.add_argument('--model', type=str, help='Path to model.pth file')
+    parser.add_argument('--mode', choices=['train', 'predict'], default='train',
+                      help='Mode to run in (default: train)')
+    parser.add_argument('--image', type=str, help='Image to predict (required for predict mode)')
     
-    # Get data loaders and setup model
-    train_loader, val_loader = create_data_loaders(
-        gen_folder="discord_chats/gen",
-        altered_folder="discord_chats/altered",
-        batch_size=64
-    )
+    args = parser.parse_args()
     
-    # Training parameters
-    model = pre_trained_resnet18().to(device)
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=3)
-
-    # Train the model
-    avg_train_loss, avg_val_loss, val_accuracy = train_model(model, train_loader, val_loader, num_epochs=10, patience=3)
-    
-    # Store metrics
-    history['train_loss'].append(avg_train_loss)
-    history['val_loss'].append(avg_val_loss)
-    history['val_acc'].append(val_accuracy)
-    
-    if val_accuracy > best_val_acc:
-        best_val_acc = val_accuracy
-        best_epoch = epoch + 1
-    
-    # Calculate training time
-    training_time = time.time() - start_time
-    
-    # Final Report
-    print_training_report(training_time, best_val_acc, best_epoch, history)
-
-
-# def save_model(model, path='model.pth'):
-#     torch.save({
-#         'model_state_dict': model.state_dict(),
-#         'transform': transform_train
-#     }, path)
-#     print(f"Model saved to {path}")
-
-# def load_model(path='model.pth'):
-#     model = pre_trained_resnet18()
-#     checkpoint = torch.load(path)
-#     model.load_state_dict(checkpoint['model_state_dict'])
-#     model.eval()
-#     return model, checkpoint['transform']
-
-# def predict_image(image_path, model, transform):
-#     # Load and preprocess image
-#     image = Image.open(image_path).convert('RGB')
-#     image = transform(image).unsqueeze(0).to(device)
-    
-#     # Predict
-#     with torch.no_grad():
-#         outputs = model(image)
-#         _, predicted = torch.max(outputs, 1)
-    
-#     return "Altered" if predicted.item() == 1 else "Generated"
+    if args.mode == 'predict':
+        if not args.model:
+            parser.error("--model is required for predict mode")
+        if not args.image:
+            parser.error("--image is required for predict mode")
+            
+        model, checkpoint = load_checkpoint(args.model)
+        prob = predict_image(model, args.image)
+        print(f"\nPrediction for {args.image}:")
+        print(f"Probability of being altered: {prob:.2%}")
+        
+    else:  # train mode
+        # Initialize tracking variables
+        start_time = time.time()
+        best_val_acc = 0.0
+        best_epoch = 0
+        history = {
+            'train_loss': [],
+            'val_loss': [],
+            'val_acc': []
+        }
+        
+        # Setup model and training
+        if args.model:  # Continue training existing model
+            model, checkpoint = load_checkpoint(args.model)
+            print(f"Continuing training from checkpoint: {args.model}")
+        else:  # Train new model
+            model = pre_trained_resnet18().to(device)
+            
+        # Get data loaders
+        train_loader, val_loader = create_data_loaders(
+            gen_folder="discord_chats/gen",
+            altered_folder="discord_chats/altered",
+            batch_size=64
+        )
+        
+        # Training parameters
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', 
+                                                       factor=0.1, patience=3)
+        
+        # Train the model
+        history = train_model(model, train_loader, val_loader, 
+                            num_epochs=10, patience=3)
+        
+        # Calculate training time and print report
+        training_time = time.time() - start_time
+        print_training_report(training_time, best_val_acc, best_epoch, history)
