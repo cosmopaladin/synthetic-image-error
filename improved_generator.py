@@ -14,10 +14,10 @@ avatars_folder = "images/avatars"
 AVATAR_PATH = "images/placeholder_avatar.png"  # Path to a default avatar image
 
 # Chat appearance settings
-BACKGROUND_COLOR = (54, 57, 63)  # Discord background color
-TEXT_COLOR = (220, 221, 222)     # Discord message text color
-USERNAME_COLOR = (88, 101, 242)  # Discord username color
-TIMESTAMP_COLOR = (163, 166, 170)  # Discord timestamp color
+# BACKGROUND_COLOR = (54, 57, 63)  # Discord background color
+# TEXT_COLOR = (220, 221, 222)     # Discord message text color
+# USERNAME_COLOR = (88, 101, 242)  # Discord username color
+# TIMESTAMP_COLOR = (163, 166, 170)  # Discord timestamp color
 FONT_SIZE = 20
 LINE_HEIGHT = 50  # Line height for messages
 AVATAR_SIZE = 40  # Size of circular avatar
@@ -55,46 +55,109 @@ def create_circular_avatar(avatar_path, size=AVATAR_SIZE):
   circular_avatar.paste(avatar, (0, 0), mask=mask)
   return circular_avatar
 
+def calculate_contrast_ratio(color1, color2):
+    """Calculate contrast ratio between two colors"""
+    def luminance(rgb):
+        rgb = [x/255 for x in rgb]
+        rgb = [x/12.92 if x <= 0.03928 else ((x+0.055)/1.055)**2.4 for x in rgb]
+        return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
+    
+    l1, l2 = luminance(color1), luminance(color2)
+    return (max(l1, l2) + 0.05) / (min(l1, l2) + 0.05)
+
+def generate_chat_colors(usernames):
+    """Generate color scheme with unique username colors for light/dark theme"""
+    # Theme configurations
+    themes = {
+        'dark': {
+            'background_range': (20, 40),
+            'text_range': (200, 255),
+            'timestamp_range': (140, 160),
+            'username_range': (100, 255),
+            'min_contrast': 4.5
+        },
+        'light': {
+            'background_range': (240, 255),
+            'text_range': (20, 60),
+            'timestamp_range': (100, 120),
+            'username_range': (0, 150),
+            'min_contrast': 4.0
+        }
+    }
+    
+    # Select random theme
+    theme_type = random.choice(list(themes.keys()))
+    theme = themes[theme_type]
+    
+    # Generate base colors
+    background = (random.randint(*theme['background_range']),) * 3
+    
+    # Generate text color with contrast check
+    while True:
+        text = (random.randint(*theme['text_range']),) * 3
+        if calculate_contrast_ratio(background, text) >= theme['min_contrast']:
+            break
+    
+    # Generate timestamp color with contrast check
+    while True:
+        timestamp = (random.randint(*theme['timestamp_range']),) * 3
+        if calculate_contrast_ratio(background, timestamp) >= theme['min_contrast']:
+            break
+    
+    # Generate unique username colors with contrast check
+    username_colors = {}
+    for username in usernames:
+        while True:
+            color = tuple(
+                random.randint(*theme['username_range'])
+                for _ in range(3)
+            )
+            if calculate_contrast_ratio(background, color) >= theme['min_contrast']:
+                username_colors[username] = color
+                break
+    
+    return {
+        'background': background,
+        'text': text,
+        'timestamp': timestamp,
+        'usernames': username_colors,
+        'theme': theme_type
+    }
+
 # Generate a synthetic Discord chat
 def generate_discord_chat(messages, avatar_path, output_path):
-    # Calculate image height dynamically based on the number of messages
+    # Get unique usernames from messages
+    usernames = {username for username, _, _, _ in messages}
+    
+    # Get random colors with unique username colors
+    colors = generate_chat_colors(usernames)
+    
+    # Create image
     total_height = (LINE_HEIGHT + MESSAGE_PADDING) * len(messages) + MESSAGE_PADDING
-    img = Image.new("RGB", (IMAGE_WIDTH, total_height), BACKGROUND_COLOR)
+    img = Image.new("RGB", (IMAGE_WIDTH, total_height), colors['background'])
     draw = ImageDraw.Draw(img)
+    y_offset = MESSAGE_PADDING
 
-    y_offset = MESSAGE_PADDING  # Initial padding from top
-
-    # Create and paste messages
     for username, discriminator, message, timestamp in messages:
-        # Create circular avatar
         avatar = create_circular_avatar(avatar_path)
-
-        # Paste avatar
         img.paste(avatar, (20, y_offset), avatar)
-
-        # Draw username, discriminator, and timestamp
+        
         username_text = f"{username}#{discriminator}"
         username_width = draw.textbbox((0, 0), username_text, font=font_bold)[2]
-        timestamp_width = draw.textbbox((0, 0), timestamp, font=font_regular)[2]
         timestamp_x = username_width + 100
 
-        # Ensure username and timestamp fit in the same line
-        max_username_width = 300
-        if username_width > max_username_width:
-            username_text = username_text[:max_username_width] + "..."
+        # Use unique color for each username
+        draw.text((80, y_offset), username_text, 
+                 fill=colors['usernames'][username], font=font_bold)
+        draw.text((timestamp_x, y_offset), timestamp, 
+                 fill=colors['timestamp'], font=font_regular)
+        draw.text((80, y_offset + LINE_HEIGHT // 2), message, 
+                 fill=colors['text'], font=font_regular)
 
-        draw.text((80, y_offset), username_text, fill=USERNAME_COLOR, font=font_bold)
-        draw.text((timestamp_x, y_offset), timestamp, fill=TIMESTAMP_COLOR, font=font_regular)
-
-        # Draw message text
-        draw.text((80, y_offset + LINE_HEIGHT // 2), message, fill=TEXT_COLOR, font=font_regular)
-
-        # Update y_offset for next message
         y_offset += LINE_HEIGHT + MESSAGE_PADDING
 
-    # Save the image
     img.save(output_path)
-    print(f"Generated Discord chat saved to {output_path}")
+    print(f"Saved {colors['theme']} theme chat to: {output_path}")
 
 # Load messages from a file
 def load_messages_from_file(file_path):
