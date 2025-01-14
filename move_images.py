@@ -34,13 +34,18 @@ def distribute_images():
     # Randomly select images to move
     to_move = random.sample(image_files, num_to_move)
     
-    # Move selected images
-    for filename in tqdm(to_move, desc="Moving files"):
+    # Move and delete selected images
+    for filename in tqdm(to_move, desc="Processing files"):
         src = os.path.join(gen_path, filename)
         dst = os.path.join(to_alter_path, filename)
-        shutil.move(src, dst)
+        try:
+            shutil.copy2(src, dst)  # Copy file first
+            os.remove(src)  # Then remove original
+        except Exception as e:
+            print(f"Error processing {filename}: {e}")
+            continue
         
-    print(f"Moved {len(to_move)} images to {to_alter_path}")
+    print(f"Processed {len(to_move)} images: copied to {to_alter_path} and removed from {gen_path}")
 
 if __name__ == "__main__":
     print("Cleaning directories...")

@@ -14,39 +14,37 @@ def subtle_distort(image_np, box, intensity=0.3):
     y1, y2 = max(0, y1-margin), min(image_np.shape[0], y2+margin)
     
     region = image_np[y1:y2, x1:x2].copy()
+    original_region = region.copy()
     
-    # Random distortion type
-    distortion = random.choice([
-        'blur',
-        'noise',
-        'compression',
-        'color_shift'
-    ])
+    # Available distortion types
+    distortions = ['blur', 'noise', 'compression', 'color_shift']
     
-    if distortion == 'blur':
-        # Gaussian blur
-        region_img = Image.fromarray(region)
-        region = np.array(region_img.filter(ImageFilter.GaussianBlur(radius=0.5)))
+    # Randomly select 1-4 unique distortions
+    num_distortions = random.randint(1, 4)
+    selected_distortions = random.sample(distortions, num_distortions)
     
-    elif distortion == 'noise':
-        # Subtle noise
-        noise = np.random.normal(0, 2, region.shape)
-        region = np.clip(region + noise * intensity, 0, 255).astype(np.uint8)
+    # Apply each selected distortion
+    for distortion in selected_distortions:
+        if distortion == 'blur':
+            region_img = Image.fromarray(region)
+            region = np.array(region_img.filter(ImageFilter.GaussianBlur(radius=0.5)))
+        
+        elif distortion == 'noise':
+            noise = np.random.normal(0, 2, region.shape)
+            region = np.clip(region + noise * intensity, 0, 255).astype(np.uint8)
+        
+        elif distortion == 'compression':
+            img = Image.fromarray(region)
+            buffer = BytesIO()
+            img.save(buffer, format='JPEG', quality=85)
+            buffer.seek(0)
+            region = np.array(Image.open(buffer))
+        
+        elif distortion == 'color_shift':
+            shift = np.random.uniform(-5, 5, 3) * intensity
+            region = np.clip(region + shift, 0, 255).astype(np.uint8)
     
-    elif distortion == 'compression':
-        # JPEG compression artifacts
-        img = Image.fromarray(region)
-        buffer = BytesIO()
-        img.save(buffer, format='JPEG', quality=85)
-        buffer.seek(0)
-        region = np.array(Image.open(buffer))
-    
-    elif distortion == 'color_shift':
-        # Subtle color adjustment
-        shift = np.random.uniform(-5, 5, 3) * intensity
-        region = np.clip(region + shift, 0, 255).astype(np.uint8)
-    
-    # Blend distorted region with original
+    # Final blend with original
     alpha = np.random.uniform(0.7, 0.9)
     image_np[y1:y2, x1:x2] = cv2.addWeighted(
         image_np[y1:y2, x1:x2], 1-alpha,
