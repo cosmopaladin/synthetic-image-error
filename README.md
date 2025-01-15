@@ -19,17 +19,21 @@ This project generate synthetic discord message screenshots. Creates artificial 
 ## Command line training
 ### Tuning
 python pytorch_training.py --mode tune --n-trials 10  
-
-The default for number of trials is 10
+The default for number of trials is 10  
+All runs with a saved checkpoint are logged in training_report.txt. Epoch stats are also logged to checkpoint_history.txt
 
 ### Train new model (default)
-python pytorch_training.py
+python pytorch_training.py  
+All runs with a saved checkpoint are logged in checkpoint_history.txt as well as a record of each epoch
 
 ### Train from checkpoint
 python pytorch_training.py --model checkpoint.pth --mode train
+Logs to checkpoint_history.txt
 
 ### Single image prediction
-python pytorch_training.py --mode predict --model model.pth --image test.jpg
+python pytorch_training.py --mode predict --model model.pth --image test.jpg  
+Logs to training_report.txt
 
 ### Directory prediction
-python pytorch_training.py --mode predict --model model.pth --dir test_images/
+python pytorch_training.py --mode predict --model model.pth --dir test_images/  
+Logs to training_report.txt
