@@ -413,6 +413,25 @@ def predict_image(model, image_path):
     
     return altered_prob
 
+# Add new function for directory prediction
+def predict_directory(model, directory):
+    """Predict all images in a directory"""
+    results = {}
+    image_files = [f for f in os.listdir(directory) 
+                  if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    
+    print(f"\nProcessing {len(image_files)} images...")
+    for image_file in tqdm(image_files, desc="Predicting"):
+        image_path = os.path.join(directory, image_file)
+        try:
+            prob = predict_image(model, image_path)
+            results[image_file] = prob
+        except Exception as e:
+            print(f"Error processing {image_file}: {e}")
+            results[image_file] = None
+    
+    return results
+
 def log_run_info(mode, model_info, runtime=None, history=None, prediction_result=None, final_epoch=None):
     """Log run information to a report file"""
     log_file = "training_report.txt"
@@ -448,8 +467,16 @@ def log_run_info(mode, model_info, runtime=None, history=None, prediction_result
             
         elif mode == 'predict':
             f.write(f"Model Path: {model_info}\n")
-            f.write(f"Image: {args.image}\n")
-            f.write(f"Alteration Probability: {prediction_result:.2%}\n")
+            if isinstance(prediction_result, dict):
+                f.write("\nDirectory Predictions:\n")
+                for image, prob in prediction_result.items():
+                    if prob is not None:
+                        f.write(f"{image}: {prob:.2%}\n")
+                    else:
+                        f.write(f"{image}: Failed to process\n")
+            else:
+                f.write(f"Image: {args.image}\n")
+                f.write(f"Alteration Probability: {prediction_result:.2%}\n")
         
         f.write(f"{'='*50}\n")
 
@@ -487,7 +514,8 @@ if __name__ == "__main__":
     parser.add_argument('--model', type=str, help='Path to model.pth file')
     parser.add_argument('--mode', choices=['train', 'predict', 'tune'], default='train',
                       help='Mode to run in (default: train)')
-    parser.add_argument('--image', type=str, help='Image to predict (required for predict mode)')
+    parser.add_argument('--image', type=str, help='Image file to predict')
+    parser.add_argument('--dir', type=str, help='Directory of images to predict')
     parser.add_argument('--n-trials', type=int, default=10,
                       help='Number of trials for hyperparameter optimization')
     
@@ -500,14 +528,37 @@ if __name__ == "__main__":
     if args.mode == 'predict':
         if not args.model:
             parser.error("--model is required for predict mode")
-        if not args.image:
-            parser.error("--image is required for predict mode")
+        if not args.image and not args.dir:
+            parser.error("Either --image or --dir is required for predict mode")
+        if args.image and args.dir:
+            parser.error("Cannot specify both --image and --dir")
             
         model, checkpoint = load_checkpoint(args.model)
-        prob = predict_image(model, args.image)
-        print(f"\nPrediction for {args.image}:")
-        print(f"Probability of being altered: {prob:.2%}")
-        log_run_info('predict', args.model, prediction_result=prob)
+        
+        if args.dir:
+            # Directory mode
+            results = predict_directory(model, args.dir)
+            
+            # Print results
+            print("\nPrediction Results:")
+            print("="*50)
+            for image, prob in results.items():
+                if prob is not None:
+                    print(f"{image}: {prob:.2%}")
+                else:
+                    print(f"{image}: Failed to process")
+            print("="*50)
+            
+            # Log directory results
+            log_run_info('predict', args.model, 
+                        prediction_result=results)
+        else:
+            # Single image mode
+            prob = predict_image(model, args.image)
+            print(f"\nPrediction for {args.image}:")
+            print(f"Probability of being altered: {prob:.2%}")
+            log_run_info('predict', args.model, 
+                        prediction_result=prob)
         
     # Update error handling in main
     elif args.mode == 'tune':
