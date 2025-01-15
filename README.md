@@ -27,7 +27,7 @@ python pytorch_training.py
 All runs with a saved checkpoint are logged in checkpoint_history.txt as well as a record of each epoch
 
 ### Train from checkpoint
-python pytorch_training.py --model checkpoint.pth --mode train
+python pytorch_training.py --mode train --model checkpoint.pth
 Logs to checkpoint_history.txt
 
 ### Single image prediction
