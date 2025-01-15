@@ -65,12 +65,14 @@ def objective(trial):
                               lr=params['learning_rate'], 
                               weight_decay=params['weight_decay'])
         
-        # Train for a few epochs
+        # Train for a few epochs with optimizer and criterion
         history = train_model(
-            model, 
-            train_loader, 
-            val_loader, 
-            num_epochs=5,  # Reduced epochs for quick evaluation
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            optimizer=optimizer,
+            criterion=criterion,
+            num_epochs=5,
             patience=2
         )
         
@@ -227,7 +229,7 @@ def create_data_loaders(gen_folder, altered_folder, batch_size=64, train_split=0
     
     return train_loader, val_loader
 
-def train_model(model, train_loader, val_loader, num_epochs=50, patience=5):
+def train_model(model, train_loader, val_loader, optimizer, criterion, num_epochs=50, patience=5):
     best_acc = 0.0
     patience_counter = 0
     history = {'train_loss': [], 'val_loss': [], 'val_acc': []}
@@ -504,12 +506,14 @@ if __name__ == "__main__":
             patience=LR_PATIENCE
         )
         
-        # Train the model
+        # Train the model with optimizer and criterion
         history = train_model(
-            model, 
-            train_loader, 
-            val_loader, 
-            num_epochs=NUM_EPOCHS, 
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            optimizer=optimizer,
+            criterion=criterion,
+            num_epochs=NUM_EPOCHS,
             patience=EARLY_STOPPING_PATIENCE
         )
         
