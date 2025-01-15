@@ -14,11 +14,11 @@ from sklearn.model_selection import train_test_split # type: ignore
 import argparse
 
 # Hyperparameters
-LEARNING_RATE = 0.0001 #NOTE: This is slightly to aggressive from my tests on the final run, and it doesn't hit the optimizer as consistently or quickly as it probably should because of this, but these are still the best hyperparameters I have found so far.
+LEARNING_RATE = 0.0005 #NOTE: This is slightly to aggressive from my tests on the final run, and it doesn't hit the optimizer as consistently or quickly as it probably should because of this, but these are still the best hyperparameters I have found so far.
 FEATURE_REDUCTION = 512 # ResNet50 has 2048 features
 BATCH_SIZE = 64
 EARLY_STOPPING_PATIENCE = 13
-WEIGHT_DECAY = 0.001
+WEIGHT_DECAY = 0.005
 NUM_EPOCHS = 40
 LR_PATIENCE = 3
 LR_FACTOR = 0.5 #LEARNING_RATE * LR_FACTOR = new learning rate
