@@ -37,3 +37,7 @@ Logs to training_report.txt
 ### Directory prediction
 python pytorch_training.py --mode predict --model model.pth --dir test_images/  
 Logs to training_report.txt
+
+### Run all models in a directory against test images
+python pytorch_training.py --mode predict --models-dir models/ --dir test_images/
+Logs to multi_model_predictions.txt

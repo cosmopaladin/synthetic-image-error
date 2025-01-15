@@ -508,6 +508,59 @@ def log_checkpoint_info(checkpoint_file, val_accuracy, epoch, hyperparams, train
         
         f.write(f"{'='*50}\n")
 
+def predict_with_multiple_models(models_dir, image_dir):
+    """Run predictions using multiple models on multiple images"""
+    results = {}
+    model_files = [f for f in os.listdir(models_dir) if f.endswith('.pth')]
+    
+    print(f"\nFound {len(model_files)} models in {models_dir}")
+    for model_file in tqdm(model_files, desc="Processing models"):
+        model_path = os.path.join(models_dir, model_file)
+        try:
+            model, _ = load_checkpoint(model_path)
+            image_results = predict_directory(model, image_dir)
+            results[model_file] = image_results
+        except Exception as e:
+            print(f"Error loading model {model_file}: {e}")
+            results[model_file] = None
+            
+    return results
+
+def log_multi_model_predictions(results, models_dir, image_dir):
+    """Log results from multiple model predictions"""
+    log_file = "multi_model_predictions.txt"
+    timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+    
+    with open(log_file, 'a') as f:
+        f.write(f"\n{'='*50}\n")
+        f.write(f"Multi-Model Prediction Run: {timestamp}\n")
+        f.write(f"Models Directory: {models_dir}\n")
+        f.write(f"Images Directory: {image_dir}\n\n")
+        
+        # Calculate and log consensus statistics
+        for model_name, predictions in results.items():
+            if predictions is None:
+                f.write(f"\nModel {model_name}: Failed to load\n")
+                continue
+                
+            f.write(f"\nModel: {model_name}\n")
+            f.write("-"*30 + "\n")
+            
+            # Log individual image predictions
+            for image, prob in predictions.items():
+                if prob is not None:
+                    f.write(f"{image}: {prob:.2%}\n")
+                else:
+                    f.write(f"{image}: Failed to process\n")
+            
+            # Calculate model statistics
+            valid_preds = [p for p in predictions.values() if p is not None]
+            if valid_preds:
+                avg_conf = sum(valid_preds) / len(valid_preds)
+                f.write(f"\nAverage Confidence: {avg_conf:.2%}\n")
+        
+        f.write(f"\n{'='*50}\n")
+
 # Usage in main
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train or use a model for altered image detection')
@@ -518,6 +571,7 @@ if __name__ == "__main__":
     parser.add_argument('--dir', type=str, help='Directory of images to predict')
     parser.add_argument('--n-trials', type=int, default=10,
                       help='Number of trials for hyperparameter optimization')
+    parser.add_argument('--models-dir', type=str, help='Directory containing multiple .pth model files')
     
     args = parser.parse_args()
     
@@ -526,39 +580,70 @@ if __name__ == "__main__":
         get_or_calculate_normalization()
     
     if args.mode == 'predict':
-        if not args.model:
-            parser.error("--model is required for predict mode")
-        if not args.image and not args.dir:
+        if not (args.model or args.models_dir):
+            parser.error("Either --model or --models-dir is required for predict mode")
+        if not (args.image or args.dir):
             parser.error("Either --image or --dir is required for predict mode")
         if args.image and args.dir:
             parser.error("Cannot specify both --image and --dir")
+        if args.model and args.models_dir:
+            parser.error("Cannot specify both --model and --models-dir")
             
-        model, checkpoint = load_checkpoint(args.model)
-        
-        if args.dir:
-            # Directory mode
-            results = predict_directory(model, args.dir)
+        if args.models_dir:
+            if not args.dir:
+                parser.error("--models-dir requires --dir (directory of images)")
+                
+            # Multi-model directory mode
+            results = predict_with_multiple_models(args.models_dir, args.dir)
             
-            # Print results
-            print("\nPrediction Results:")
+            # Print summary
+            print("\nPrediction Summary:")
             print("="*50)
-            for image, prob in results.items():
-                if prob is not None:
-                    print(f"{image}: {prob:.2%}")
-                else:
-                    print(f"{image}: Failed to process")
+            for model_name, predictions in results.items():
+                if predictions is None:
+                    print(f"\nModel {model_name}: Failed to load")
+                    continue
+                    
+                print(f"\nModel: {model_name}")
+                print("-"*30)
+                for image, prob in predictions.items():
+                    if prob is not None:
+                        print(f"{image}: {prob:.2%}")
+                    else:
+                        print(f"{image}: Failed to process")
             print("="*50)
             
-            # Log directory results
-            log_run_info('predict', args.model, 
-                        prediction_result=results)
+            # Log detailed results
+            log_multi_model_predictions(results, args.models_dir, args.dir)
+            print(f"\nDetailed results saved to multi_model_predictions.txt")
         else:
-            # Single image mode
-            prob = predict_image(model, args.image)
-            print(f"\nPrediction for {args.image}:")
-            print(f"Probability of being altered: {prob:.2%}")
-            log_run_info('predict', args.model, 
-                        prediction_result=prob)
+            # Original single model logic...
+            model, checkpoint = load_checkpoint(args.model)
+        
+            if args.dir:
+                # Directory mode
+                results = predict_directory(model, args.dir)
+                
+                # Print results
+                print("\nPrediction Results:")
+                print("="*50)
+                for image, prob in results.items():
+                    if prob is not None:
+                        print(f"{image}: {prob:.2%}")
+                    else:
+                        print(f"{image}: Failed to process")
+                print("="*50)
+                
+                # Log directory results
+                log_run_info('predict', args.model, 
+                            prediction_result=results)
+            else:
+                # Single image mode
+                prob = predict_image(model, args.image)
+                print(f"\nPrediction for {args.image}:")
+                print(f"Probability of being altered: {prob:.2%}")
+                log_run_info('predict', args.model, 
+                            prediction_result=prob)
         
     # Update error handling in main
     elif args.mode == 'tune':
