@@ -27,5 +27,5 @@ python pytorch_training.py --model checkpoint.pth --mode train
 python pytorch_training.py --model checkpoint.pth --mode predict --image test.jpg
 
 ### Tuning
-python pytorch_training.py --mode tune --n-trials 10
+python pytorch_training.py --mode tune --n-trials 10  
 The default for number of trials is 10
