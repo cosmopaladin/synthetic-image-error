@@ -12,6 +12,7 @@ from datetime import timedelta
 import torch.nn.init as init # type: ignore
 from sklearn.model_selection import train_test_split # type: ignore
 import argparse
+import optuna # type: ignore # python pytorch_training.py --mode tune
 
 # Hyperparameters
 LEARNING_RATE = 0.001 #NOTE: This is slightly to aggressive from my tests on the final run, and it doesn't hit the optimizer as consistently or quickly as it probably should because of this, but these are still the best hyperparameters I have found so far.
@@ -33,6 +34,66 @@ device = (
     else "cpu"
 )
 print(f"Using device: {device}")
+
+def objective(trial):
+    """Optuna objective for hyperparameter optimization"""
+    # Suggest hyperparameters
+    params = {
+        'learning_rate': trial.suggest_float('learning_rate', 1e-5, 1e-2, log=True),
+        'batch_size': trial.suggest_int('batch_size', 16, 128, step=16),
+        'feature_reduction': trial.suggest_int('feature_reduction', 128, 1024, step=128),
+        'weight_decay': trial.suggest_float('weight_decay', 1e-5, 1e-2, log=True),
+        'lr_factor': trial.suggest_float('lr_factor', 0.1, 0.9, step=0.1),
+        'dropout1': trial.suggest_float('dropout1', 0.2, 0.7),
+        'dropout2': trial.suggest_float('dropout2', 0.1, 0.5)
+    }
+    
+    try:
+        # Create model with trial parameters
+        model = pre_trained_resnet50().to(device)
+        
+        # Get data loaders
+        train_loader, val_loader = create_data_loaders(
+            gen_folder="discord_chats/gen",
+            altered_folder="discord_chats/altered",
+            batch_size=params['batch_size']
+        )
+        
+        # Training setup
+        criterion = nn.BCEWithLogitsLoss()
+        optimizer = optim.AdamW(model.parameters(), 
+                              lr=params['learning_rate'], 
+                              weight_decay=params['weight_decay'])
+        
+        # Train for a few epochs
+        history = train_model(
+            model, 
+            train_loader, 
+            val_loader, 
+            num_epochs=5,  # Reduced epochs for quick evaluation
+            patience=2
+        )
+        
+        # Return best validation accuracy
+        return max(history['val_acc'])
+        
+    except Exception as e:
+        print(f"Trial failed: {e}")
+        raise optuna.exceptions.TrialPruned()
+
+def log_hyperparameter_study(study):
+    """Log hyperparameter optimization results"""
+    log_file = "hyperparameter_study.txt"
+    timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+    
+    with open(log_file, 'a') as f:
+        f.write(f"\n{'='*50}\n")
+        f.write(f"Study Date: {timestamp}\n")
+        f.write(f"Best Trial Number: {study.best_trial.number}\n")
+        f.write(f"Best Parameters:\n")
+        for param, value in study.best_params.items():
+            f.write(f"{param}: {value}\n")
+        f.write(f"{'='*50}\n")
 
 class DiscordDataset(Dataset):
     def __init__(self, gen_folder, altered_folder, transform=None, file_list=None):
@@ -330,6 +391,15 @@ def log_run_info(mode, model_info, runtime=None, history=None, prediction_result
             f.write(f"LR Factor: {LR_FACTOR}\n")
             f.write(f"Batch Size: {BATCH_SIZE}\n")
             f.write(f"Early Stopping Patience: {EARLY_STOPPING_PATIENCE}\n")
+            # Add hyperparameter section
+            f.write("\nHyperparameters:\n")
+            f.write(f"Learning Rate: {LEARNING_RATE}\n")
+            f.write(f"Batch Size: {BATCH_SIZE}\n")
+            f.write(f"Feature Reduction: {FEATURE_REDUCTION}\n")
+            f.write(f"Weight Decay: {WEIGHT_DECAY}\n")
+            f.write(f"LR Factor: {LR_FACTOR}\n")
+            f.write(f"Early Stopping Patience: {EARLY_STOPPING_PATIENCE}\n")
+            f.write(f"LR Patience: {LR_PATIENCE}\n")
             
         elif mode == 'predict':
             f.write(f"Model Path: {model_info}\n")
@@ -342,9 +412,11 @@ def log_run_info(mode, model_info, runtime=None, history=None, prediction_result
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train or use a model for altered image detection')
     parser.add_argument('--model', type=str, help='Path to model.pth file')
-    parser.add_argument('--mode', choices=['train', 'predict'], default='train',
+    parser.add_argument('--mode', choices=['train', 'predict', 'tune'], default='train',
                       help='Mode to run in (default: train)')
     parser.add_argument('--image', type=str, help='Image to predict (required for predict mode)')
+    parser.add_argument('--n-trials', type=int, default=10,
+                      help='Number of trials for hyperparameter optimization')
     
     args = parser.parse_args()
     
@@ -359,6 +431,41 @@ if __name__ == "__main__":
         print(f"\nPrediction for {args.image}:")
         print(f"Probability of being altered: {prob:.2%}")
         log_run_info('predict', args.model, prediction_result=prob)
+        
+    # Update error handling in main
+    elif args.mode == 'tune':
+        print("\nStarting hyperparameter optimization...")
+        study = optuna.create_study(direction="maximize")
+        
+        try:
+            # Create progress bar
+            pbar = tqdm(total=args.n_trials, desc="Optimization Progress")
+            
+            def callback(study, trial):
+                pbar.update(1)
+                
+            # Run optimization with progress tracking
+            study.optimize(objective, n_trials=args.n_trials, callbacks=[callback])
+            pbar.close()
+            
+            if study.best_trial:
+                print("\nBest trial:")
+                trial = study.best_trial
+                print(f"Value: {trial.value:.4f}")
+                print("\nBest hyperparameters:")
+                for key, value in trial.params.items():
+                    print(f"{key}: {value}")
+                    
+                # Log the results
+                log_hyperparameter_study(study)
+                print("\nResults saved to hyperparameter_study.txt")
+            else:
+                print("\nNo successful trials completed")
+                
+        except KeyboardInterrupt:
+            print("\nOptimization interrupted by user")
+        except Exception as e:
+            print(f"\nOptimization failed: {e}")
         
     else:  # train mode
         # Initialize tracking variables
