@@ -35,6 +35,23 @@ device = (
 )
 print(f"Using device: {device}")
 
+# Cache for normalization values
+NORM_VALUES = {
+    'mean': None,
+    'std': None
+}
+
+def get_or_calculate_normalization():
+    """Get cached normalization values or calculate them"""
+    if NORM_VALUES['mean'] is None or NORM_VALUES['std'] is None:
+        mean, std = calculate_normalization_values(
+            "discord_chats/gen",
+            "discord_chats/altered"
+        )
+        NORM_VALUES['mean'] = mean
+        NORM_VALUES['std'] = std
+    return NORM_VALUES['mean'], NORM_VALUES['std']
+
 def objective(trial):
     """Optuna objective for hyperparameter optimization"""
     # Suggest hyperparameters
@@ -73,7 +90,8 @@ def objective(trial):
             optimizer=optimizer,
             criterion=criterion,
             num_epochs=5,
-            patience=2
+            patience=3,
+            hyperparams=params  # Pass hyperparams to train_model
         )
         
         # Return best validation accuracy
@@ -182,10 +200,8 @@ def calculate_normalization_values(gen_folder, altered_folder):
     return mean.tolist(), std.tolist()
 
 def create_data_loaders(gen_folder, altered_folder, batch_size=64, train_split=0.8):
-    # Calculate normalization values
-    mean, std = calculate_normalization_values(gen_folder, altered_folder)
-    print(f"Dataset mean: {mean}")
-    print(f"Dataset std: {std}")
+    """Create data loaders using cached normalization values"""
+    mean, std = NORM_VALUES['mean'], NORM_VALUES['std']
     
     # Data augmentation for training
     transform_train = transforms.Compose([
@@ -229,7 +245,7 @@ def create_data_loaders(gen_folder, altered_folder, batch_size=64, train_split=0
     
     return train_loader, val_loader
 
-def train_model(model, train_loader, val_loader, optimizer, criterion, num_epochs=50, patience=5):
+def train_model(model, train_loader, val_loader, optimizer, criterion, num_epochs=50, patience=5, hyperparams=None):
     best_acc = 0.0
     patience_counter = 0
     history = {'train_loss': [], 'val_loss': [], 'val_acc': []}
@@ -296,7 +312,13 @@ def train_model(model, train_loader, val_loader, optimizer, criterion, num_epoch
                 epoch,
                 val_accuracy,
                 optimizer,
-                f'model_checkpoint_acc{val_accuracy:.4f}_{timestamp}.pth'
+                f'model_checkpoint_acc{val_accuracy:.4f}_{timestamp}.pth',
+                hyperparams=hyperparams,
+                training_metrics={
+                    'train_loss': avg_train_loss,
+                    'val_loss': avg_val_loss,
+                    'val_acc': val_accuracy
+                }
             )
         else:
             patience_counter += 1
@@ -309,7 +331,13 @@ def train_model(model, train_loader, val_loader, optimizer, criterion, num_epoch
                     epoch,
                     val_accuracy,
                     optimizer,
-                    f'model_checkpoint_acc{val_accuracy:.4f}_{timestamp}.pth'
+                    f'model_checkpoint_acc{val_accuracy:.4f}_{timestamp}.pth',
+                    hyperparams=hyperparams,
+                    training_metrics={
+                        'train_loss': avg_train_loss,
+                        'val_loss': avg_val_loss,
+                        'val_acc': val_accuracy
+                    }
                 )
                 break
     
@@ -329,7 +357,7 @@ def print_training_report(training_time, best_val_acc, best_epoch, history):
     print(f"Starting validation accuracy: {history['val_acc'][0]:.4f}")
     print("="*50)
 
-def save_checkpoint(model, epoch, val_accuracy, optimizer, filename):
+def save_checkpoint(model, epoch, val_accuracy, optimizer, filename, hyperparams=None, training_metrics=None):
     checkpoint = {
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
@@ -338,6 +366,21 @@ def save_checkpoint(model, epoch, val_accuracy, optimizer, filename):
     }
     torch.save(checkpoint, filename)
     print(f"Checkpoint saved to {filename}")
+    
+    # Log checkpoint info
+    if hyperparams is None:
+        # Use default hyperparameters for training mode
+        hyperparams = {
+            'learning_rate': optimizer.param_groups[0]['lr'],
+            'feature_reduction': FEATURE_REDUCTION,
+            'batch_size': BATCH_SIZE,
+            'weight_decay': WEIGHT_DECAY,
+            'lr_factor': LR_FACTOR,
+            'early_stopping_patience': EARLY_STOPPING_PATIENCE,
+            'lr_patience': LR_PATIENCE
+        }
+    
+    log_checkpoint_info(filename, val_accuracy, epoch, hyperparams, training_metrics)
 
 def load_checkpoint(checkpoint_path):
     """Load a saved model checkpoint"""
@@ -410,6 +453,34 @@ def log_run_info(mode, model_info, runtime=None, history=None, prediction_result
         
         f.write(f"{'='*50}\n")
 
+def log_checkpoint_info(checkpoint_file, val_accuracy, epoch, hyperparams, training_metrics=None):
+    """Log checkpoint information to a separate file"""
+    log_file = "checkpoint_history.txt"
+    timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+    
+    with open(log_file, 'a') as f:
+        f.write(f"\n{'='*50}\n")
+        f.write(f"Checkpoint Saved: {timestamp}\n")
+        f.write(f"Checkpoint File: {checkpoint_file}\n")
+        f.write(f"Validation Accuracy: {val_accuracy:.4f}\n")
+        f.write(f"Epoch: {epoch}\n")
+        
+        # Log hyperparameters
+        f.write("\nHyperparameters:\n")
+        for param, value in hyperparams.items():
+            f.write(f"{param}: {value}\n")
+        
+        # Log training metrics if available
+        if training_metrics:
+            f.write("\nTraining Metrics:\n")
+            for metric, value in training_metrics.items():
+                if isinstance(value, list):
+                    f.write(f"{metric}: {value[-1]:.4f}\n")
+                else:
+                    f.write(f"{metric}: {value:.4f}\n")
+        
+        f.write(f"{'='*50}\n")
+
 # Usage in main
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train or use a model for altered image detection')
@@ -421,6 +492,10 @@ if __name__ == "__main__":
                       help='Number of trials for hyperparameter optimization')
     
     args = parser.parse_args()
+    
+    # Calculate normalization values at start if not predicting
+    if args.mode != 'predict':
+        get_or_calculate_normalization()
     
     if args.mode == 'predict':
         if not args.model:
