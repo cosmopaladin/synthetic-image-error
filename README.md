@@ -20,7 +20,8 @@ This project generate synthetic discord message screenshots. Creates artificial 
 ### Tuning
 python pytorch_training.py --mode tune --n-trials 10  
 The default for number of trials is 10  
-All runs with a saved checkpoint are logged in training_report.txt. Epoch stats are also logged to checkpoint_history.txt
+All runs with a saved checkpoint are logged in training_report.txt. Epoch stats are also logged to checkpoint_history.txt     
+Also logs what it considers the single best run to hyperparameter_study.txt, but I encourage exploring the other logs as well while tuning.    
 
 ### Train new model (default)
 python pytorch_training.py  

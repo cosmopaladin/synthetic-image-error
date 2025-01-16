@@ -182,3 +182,4 @@ cython_debug/
 .pypirc
 training_report.txt
 checkpoint_history.txt
+hyperparameter_study.txt
