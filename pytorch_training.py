@@ -23,6 +23,7 @@ WEIGHT_DECAY = 0.005
 NUM_EPOCHS = 40
 LR_PATIENCE = 3
 LR_FACTOR = 0.5 #LEARNING_RATE * LR_FACTOR = new learning rate
+CHECKPOINT_DIR = "checkpoints"
 
 # Device configuration
 # I do not understand why, but this needs to be at the top of the file
@@ -40,6 +41,8 @@ NORM_VALUES = {
     'mean': None,
     'std': None
 }
+
+os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 def get_or_calculate_normalization():
     """Get cached normalization values or calculate them"""
@@ -357,6 +360,10 @@ def print_training_report(training_time, best_val_acc, best_epoch, history):
     print(f"Starting validation accuracy: {history['val_acc'][0]:.4f}")
     print("="*50)
 
+def get_checkpoint_path(filename):
+    """Get full path for checkpoint file"""
+    return os.path.join(CHECKPOINT_DIR, filename)
+
 def save_checkpoint(model, epoch, val_accuracy, optimizer, filename, hyperparams=None, training_metrics=None):
     checkpoint = {
         'epoch': epoch,
@@ -364,8 +371,9 @@ def save_checkpoint(model, epoch, val_accuracy, optimizer, filename, hyperparams
         'optimizer_state_dict': optimizer.state_dict(),
         'val_accuracy': val_accuracy,
     }
-    torch.save(checkpoint, filename)
-    print(f"Checkpoint saved to {filename}")
+    checkpoint_path = get_checkpoint_path(filename)
+    torch.save(checkpoint, checkpoint_path)
+    print(f"Checkpoint saved to {checkpoint_path}")
     
     # Log checkpoint info
     if hyperparams is None:
@@ -380,10 +388,13 @@ def save_checkpoint(model, epoch, val_accuracy, optimizer, filename, hyperparams
             'lr_patience': LR_PATIENCE
         }
     
-    log_checkpoint_info(filename, val_accuracy, epoch, hyperparams, training_metrics)
+    log_checkpoint_info(checkpoint_path, val_accuracy, epoch, hyperparams, training_metrics)
 
 def load_checkpoint(checkpoint_path):
     """Load a saved model checkpoint"""
+    if not os.path.basename(checkpoint_path).endswith('.pth'):
+        checkpoint_path = get_checkpoint_path(checkpoint_path)
+        
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(f"No checkpoint found at {checkpoint_path}")
         
