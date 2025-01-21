@@ -10,14 +10,11 @@ MESSAGES_FILE = "message_examples.txt"  # Path to the file containing message ex
 # Path to the folder containing avatar images
 avatars_folder = "images/avatars"
 
-# TO REMOVE. This is currently not used in the improved generator, but we may use it later.
+# CLEAN THIS SHIT UP
+# TO REMOVE. This is used in the code, but not in the final images.
+# There is some weird spaghetti code going on here
 AVATAR_PATH = "images/placeholder_avatar.png"  # Path to a default avatar image
 
-# Chat appearance settings
-# BACKGROUND_COLOR = (54, 57, 63)  # Discord background color
-# TEXT_COLOR = (220, 221, 222)     # Discord message text color
-# USERNAME_COLOR = (88, 101, 242)  # Discord username color
-# TIMESTAMP_COLOR = (163, 166, 170)  # Discord timestamp color
 FONT_SIZE = 20
 LINE_HEIGHT = 50  # Line height for messages
 AVATAR_SIZE = 40  # Size of circular avatar
@@ -181,11 +178,13 @@ def generate_random_messages(num_messages, message_examples):
     return messages
 
 # Generate multiple chats
-def generate_multiple_chats(output_dir, num_chats, num_messages_per_chat, message_examples):
+def generate_multiple_chats(output_dir, num_chats, message_examples):
     os.makedirs(output_dir, exist_ok=True)
 
     for i in range(num_chats):
-        messages = generate_random_messages(num_messages_per_chat, message_examples)
+        # Randomly choose number of messages between 2 and 10
+        num_messages = random.randint(2, 10)
+        messages = generate_random_messages(num_messages, message_examples)
         output_path = os.path.join(output_dir, f"discord_chat_{i + 1}.png")
         generate_discord_chat(messages, avatar_path=AVATAR_PATH, output_path=output_path)
 
@@ -200,4 +199,4 @@ if __name__ == "__main__":
     message_examples = load_messages_from_file(MESSAGES_FILE)
 
     # Generate 5 synthetic chats, each with 10 messages
-    generate_multiple_chats(output_dir="discord_chats/gen/", num_chats=10000, num_messages_per_chat=10, message_examples=message_examples)
+    generate_multiple_chats(output_dir="discord_chats/gen/", num_chats=10000, message_examples=message_examples)
